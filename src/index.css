@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    --background: 240 15% 3%;
+    --foreground: 0 0% 96%;
+
+    --card: 240 6% 6%;
+    --card-foreground: 0 0% 96%;
+
+    --popover: 240 6% 6%;
+    --popover-foreground: 0 0% 96%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 4% 12%;
+    --secondary-foreground: 0 0% 96%;
+
+    --muted: 240 4% 14%;
+    --muted-foreground: 240 5% 55%;
+
+    --accent: 240 4% 14%;
+    --accent-foreground: 0 0% 96%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 100% / 0.08;
+    --input: 0 0% 100% / 0.08;
+    --ring: 217 91% 60%;
+
+    --radius: 1.5rem;
+
+    /* Glass tokens - refined for liquid glass */
+    --glass-bg: 0 0% 100% / 0.04;
+    --glass-bg-elevated: 0 0% 100% / 0.07;
+    --glass-border: 0 0% 100% / 0.08;
+    --glass-border-highlight: 0 0% 100% / 0.12;
+    --glass-border-glow: 0 0% 100% / 0.18;
+    --glass-blur: 20px;
+    --glass-inner-glow: inset 0 1px 0 0 hsl(0 0% 100% / 0.06);
+
+    /* Chart accent colors */
+    --chart-blue: 217 91% 60%;
+    --chart-green: 160 84% 39%;
+    --chart-orange: 25 95% 53%;
+    --chart-purple: 270 76% 60%;
+    --chart-pink: 330 81% 60%;
+    --chart-yellow: 45 93% 58%;
+
+    /* Status colors */
+    --status-paid: 160 84% 39%;
+    --status-pending: 45 93% 58%;
+    --status-unpaid: 0 84% 60%;
+
+    /* Sidebar */
+    --sidebar-background: 240 15% 3%;
+    --sidebar-foreground: 240 5% 55%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 4% 12%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    background: hsl(var(--glass-bg));
+    border: 1px solid hsl(var(--glass-border));
+    border-radius: 1.5rem;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: var(--glass-inner-glow), 0 0 0 0.5px hsl(0 0% 0% / 0.3);
+  }
+
+  .glass-card-elevated {
+    background: hsl(var(--glass-bg-elevated));
+    border: 1px solid hsl(var(--glass-border-highlight));
+    border-radius: 1.5rem;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    box-shadow: var(--glass-inner-glow), 0 8px 32px hsl(0 0% 0% / 0.4), 0 0 0 0.5px hsl(0 0% 0% / 0.3);
+  }
+
+  .glass-card-highlight {
+    background: hsl(var(--glass-bg-elevated));
+    border: 1px solid hsl(var(--glass-border-glow));
+    border-radius: 1.5rem;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: var(--glass-inner-glow);
+  }
+
+  .glass-nav {
+    background: hsl(0 0% 100% / 0.06);
+    border: 1px solid hsl(var(--glass-border-highlight));
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    box-shadow: var(--glass-inner-glow), 0 -4px 30px hsl(0 0% 0% / 0.3);
+  }
+
+  .glass-inner {
+    background: hsl(0 0% 100% / 0.03);
+    border: 1px solid hsl(0 0% 100% / 0.06);
+    border-radius: 1rem;
+  }
+
+  .pill-active {
+    @apply bg-foreground text-background;
+  }
+
+  .pill-inactive {
+    @apply bg-transparent text-muted-foreground;
+  }
+
+  .glow-blue {
+    box-shadow: 0 0 24px hsl(217 91% 60% / 0.35), 0 0 8px hsl(217 91% 60% / 0.2);
+  }
+
+  .glow-green {
+    box-shadow: 0 0 20px hsl(160 84% 39% / 0.3);
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full flex-shrink-0;
+  }
+
+  .bento-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 768px) {
+    .bento-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .bento-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  .bento-span-2 {
+    grid-column: span 1;
+  }
+
+  @media (min-width: 768px) {
+    .bento-span-2 {
+      grid-column: span 2;
+    }
+  }
+}
