@@ -99,7 +99,7 @@ const ProfilePage = () => {
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full glass-inner rounded-xl px-4 py-3 text-sm text-foreground bg-transparent focus:outline-none focus:border-primary/50 transition-colors"
+              className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
             />
           </div>
 

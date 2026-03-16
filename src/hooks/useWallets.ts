@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import type { TablesInsert } from "@/integrations/supabase/types";
+import type { TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 
 export const useWallets = () => {
   const { user } = useAuth();
@@ -33,6 +33,33 @@ export const useWallets = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wallets"] }),
   });
 
+  const updateWallet = useMutation({
+    mutationFn: async ({ id, ...updates }: TablesUpdate<"wallets"> & { id: string }) => {
+      const { data, error } = await supabase
+        .from("wallets")
+        .update(updates)
+        .eq("id", id)
+        .eq("user_id", user!.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wallets"] }),
+  });
+
+  const deleteWallet = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("wallets")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", user!.id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["wallets"] }),
+  });
+
   // Credit card invoice logic
   const getCreditCardInvoice = (walletId: string, closingDay: number) => {
     const now = new Date();
@@ -59,11 +86,12 @@ export const useWallets = () => {
         return (data ?? []).reduce((sum, t) => sum + Number(t.amount), 0);
       });
   };
-
   return {
     wallets: query.data ?? [],
     isLoading: query.isLoading,
     addWallet,
+    updateWallet,
+    deleteWallet,
     getCreditCardInvoice,
   };
 };

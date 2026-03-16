@@ -231,7 +231,7 @@ const SettingsPage = () => {
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder={t("settings.categoryName")}
-                    className="w-full glass-inner rounded-xl px-4 py-3 text-sm text-foreground bg-transparent focus:outline-none"
+                    className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
                   />
                 </div>
 
@@ -277,7 +277,7 @@ const SettingsPage = () => {
                     value={pmName}
                     onChange={(e) => setPmName(e.target.value)}
                     placeholder="Ex: Cartão Alimentação, Pix Empresa..."
-                    className="w-full glass-inner rounded-xl px-4 py-3 text-sm text-foreground bg-transparent focus:outline-none"
+                    className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
                   />
                 </div>
 

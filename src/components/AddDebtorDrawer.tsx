@@ -46,7 +46,7 @@ const AddDebtorDrawer = ({ open, onOpenChange }: Props) => {
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Nome da pessoa"
-                                className="w-full glass-inner rounded-xl px-4 py-3 text-sm text-foreground bg-transparent focus:outline-none"
+                                className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
                             />
                         </div>
 

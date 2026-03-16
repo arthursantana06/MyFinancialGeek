@@ -138,7 +138,7 @@ const EditTransactionDrawer = ({ open, onOpenChange, transaction }: Props) => {
                                 value={amount}
                                 onChange={(e) => setAmount(e.target.value)}
                                 placeholder="0,00"
-                                className="w-full glass-inner rounded-xl px-4 py-3 text-2xl font-bold text-foreground bg-transparent focus:outline-none text-center"
+                                className="w-full glass-inner rounded-xl px-4 py-3 text-2xl font-bold text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all text-center"
                             />
                         </div>
 
@@ -150,7 +150,7 @@ const EditTransactionDrawer = ({ open, onOpenChange, transaction }: Props) => {
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 placeholder={t("tx.whatFor")}
-                                className="w-full glass-inner rounded-xl px-4 py-3 text-sm text-foreground bg-transparent focus:outline-none"
+                                className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
                             />
                         </div>
 
@@ -163,7 +163,7 @@ const EditTransactionDrawer = ({ open, onOpenChange, transaction }: Props) => {
                                 onChange={(e) => setDate(e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
                                 onPointerDown={(e) => e.stopPropagation()}
-                                className="w-full glass-inner rounded-xl px-4 py-3 text-sm text-foreground bg-transparent focus:outline-none appearance-none"
+                                className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all appearance-none"
                             />
                         </div>
 

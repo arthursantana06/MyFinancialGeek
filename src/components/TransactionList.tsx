@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ShoppingBag, Coffee, Car, Zap, Circle } from "lucide-react";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -15,11 +15,20 @@ const iconMap: Record<string, any> = {
   zap: Zap,
 };
 
-export default function TransactionList() {
-  const { grouped, isLoading, deleteTransaction } = useTransactions();
+export default function TransactionList({ externalFilters }: { externalFilters?: any }) {
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
+  // Reset page back to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [JSON.stringify(externalFilters)]);
+
+  const { grouped, totalCount, isLoading, deleteTransaction } = useTransactions(externalFilters, page, pageSize);
   const { t, language } = useLanguage();
 
   const groupEntries = Object.entries(grouped);
+  const hasMore = page * pageSize < totalCount;
 
   const [selectedTx, setSelectedTx] = useState<any | null>(null);
   const [editingTx, setEditingTx] = useState<any | null>(null);
@@ -83,6 +92,27 @@ export default function TransactionList() {
               })}
             </div>
           ))}
+
+          {/* Pagination Controls */}
+          {totalCount > 0 && (
+            <div className="flex justify-between items-center pt-6 mt-4">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || isLoading}
+                className="px-5 py-2.5 text-xs font-semibold rounded-xl bg-glass-inner disabled:opacity-50 text-foreground transition-all active:scale-95"
+              >
+                Página Anterior
+              </button>
+              <span className="text-xs text-muted-foreground font-medium">Página {page}</span>
+              <button
+                onClick={() => setPage(p => p + 1)}
+                disabled={!hasMore || isLoading}
+                className="px-5 py-2.5 text-xs font-semibold rounded-xl bg-glass-inner disabled:opacity-50 text-foreground transition-all active:scale-95"
+              >
+                Próxima ({Math.max(0, totalCount - page * pageSize)})
+              </button>
+            </div>
+          )}
         </div>
       )}
 

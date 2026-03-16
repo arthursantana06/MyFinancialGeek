@@ -57,7 +57,7 @@ const AuthPage = () => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Seu nome"
-                  className="w-full glass-inner rounded-xl pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors bg-transparent"
+                  className="w-full glass-inner rounded-xl pl-10 pr-4 py-3 text-base md:text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all bg-transparent"
                 />
               </div>
             </div>
@@ -73,7 +73,7 @@ const AuthPage = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="email@exemplo.com"
                 required
-                className="w-full glass-inner rounded-xl pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors bg-transparent"
+                className="w-full glass-inner rounded-xl pl-10 pr-4 py-3 text-base md:text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all bg-transparent"
               />
             </div>
           </div>
@@ -89,7 +89,7 @@ const AuthPage = () => {
                 placeholder="••••••••"
                 required
                 minLength={6}
-                className="w-full glass-inner rounded-xl pl-10 pr-10 py-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 transition-colors bg-transparent"
+                className="w-full glass-inner rounded-xl pl-10 pr-10 py-3 text-base md:text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all bg-transparent"
               />
               <button
                 type="button"
