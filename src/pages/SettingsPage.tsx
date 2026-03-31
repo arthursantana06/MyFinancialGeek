@@ -7,6 +7,7 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { toast } from "sonner";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import type { Database } from "@/integrations/supabase/types";
+import EditCategoryDrawer from "@/components/EditCategoryDrawer";
 
 type CategoryType = Database["public"]["Enums"]["category_type"];
 
@@ -23,6 +24,8 @@ const SettingsPage = () => {
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<CategoryType>("expense");
   const [newColor, setNewColor] = useState(COLORS[0]);
+
+  const [editingCategory, setEditingCategory] = useState<any | null>(null);
 
   // Payment method state
   const [pmDrawerOpen, setPmDrawerOpen] = useState(false);
@@ -126,7 +129,11 @@ const SettingsPage = () => {
                       {t("tx.expense")}
                     </p>
                     {expenseCategories.map((cat) => (
-                      <div key={cat.id} className="flex items-center gap-3 p-3 rounded-2xl glass-inner">
+                      <button 
+                        key={cat.id} 
+                        onClick={() => setEditingCategory(cat)}
+                        className="w-full text-left flex items-center gap-3 p-3 rounded-2xl glass-inner hover:bg-glass-highlight transition-colors"
+                      >
                         <div
                           className="w-8 h-8 rounded-lg flex items-center justify-center"
                           style={{ backgroundColor: cat.color + "20" }}
@@ -134,7 +141,7 @@ const SettingsPage = () => {
                           <Circle size={14} style={{ color: cat.color }} fill={cat.color} />
                         </div>
                         <span className="text-sm font-medium text-foreground flex-1">{cat.name}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -146,7 +153,11 @@ const SettingsPage = () => {
                       {t("tx.income")}
                     </p>
                     {incomeCategories.map((cat) => (
-                      <div key={cat.id} className="flex items-center gap-3 p-3 rounded-2xl glass-inner">
+                      <button 
+                        key={cat.id} 
+                        onClick={() => setEditingCategory(cat)}
+                        className="w-full text-left flex items-center gap-3 p-3 rounded-2xl glass-inner hover:bg-glass-highlight transition-colors"
+                      >
                         <div
                           className="w-8 h-8 rounded-lg flex items-center justify-center"
                           style={{ backgroundColor: cat.color + "20" }}
@@ -154,7 +165,7 @@ const SettingsPage = () => {
                           <Circle size={14} style={{ color: cat.color }} fill={cat.color} />
                         </div>
                         <span className="text-sm font-medium text-foreground flex-1">{cat.name}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -292,6 +303,12 @@ const SettingsPage = () => {
             </div>
           </DrawerContent>
         </Drawer>
+
+        <EditCategoryDrawer
+          open={!!editingCategory}
+          onOpenChange={(op) => !op && setEditingCategory(null)}
+          category={editingCategory}
+        />
       </div>
     </div>
   );

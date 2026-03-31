@@ -46,7 +46,7 @@ const TransactionsPage = () => {
               <Filter size={14} className="text-muted-foreground group-focus-within:text-primary transition-colors" />
             </div>
             <select
-              className="appearance-none bg-glass-card hover:bg-glass text-foreground rounded-2xl pl-9 pr-8 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer"
+              className="appearance-none bg-glass hover:bg-white/5 text-foreground rounded-2xl pl-9 pr-8 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer"
               value={type}
               onChange={(e) => setType(e.target.value)}
             >
@@ -65,7 +65,7 @@ const TransactionsPage = () => {
               <Wallet size={14} className="text-muted-foreground group-focus-within:text-primary transition-colors" />
             </div>
             <select
-              className="appearance-none bg-glass-card hover:bg-glass text-foreground rounded-2xl pl-9 pr-8 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer max-w-[150px] truncate"
+              className="appearance-none bg-glass hover:bg-white/5 text-foreground rounded-2xl pl-9 pr-8 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer max-w-[150px] truncate"
               value={walletId}
               onChange={(e) => setWalletId(e.target.value)}
             >
@@ -83,7 +83,7 @@ const TransactionsPage = () => {
               <Tag size={14} className="text-muted-foreground group-focus-within:text-primary transition-colors" />
             </div>
             <select
-              className="appearance-none bg-glass-card hover:bg-glass text-foreground rounded-2xl pl-9 pr-8 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer max-w-[150px] truncate"
+              className="appearance-none bg-glass hover:bg-white/5 text-foreground rounded-2xl pl-9 pr-8 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer max-w-[150px] truncate"
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
             >
@@ -102,7 +102,7 @@ const TransactionsPage = () => {
             </div>
             <input
               type="date"
-              className="appearance-none bg-glass-card hover:bg-glass text-foreground rounded-2xl pl-9 pr-4 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              className="appearance-none bg-glass hover:bg-white/5 text-foreground rounded-2xl pl-9 pr-4 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               title="Data Inicial"
@@ -116,7 +116,7 @@ const TransactionsPage = () => {
             </div>
             <input
               type="date"
-              className="appearance-none bg-glass-card hover:bg-glass text-foreground rounded-2xl pl-9 pr-4 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+              className="appearance-none bg-glass hover:bg-white/5 text-foreground rounded-2xl pl-9 pr-4 py-2.5 text-xs font-medium border border-glass-border/50 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all cursor-pointer [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               title="Data Final"

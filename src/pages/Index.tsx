@@ -1,5 +1,4 @@
 import DashboardHeader from "@/components/DashboardHeader";
-import BalanceCard from "@/components/BalanceCard";
 import RevenueChart from "@/components/RevenueChart";
 import SpendingDonut from "@/components/SpendingDonut";
 import TransactionList from "@/components/TransactionList";
@@ -12,9 +11,8 @@ const Index = () => {
       <div className="p-4 pb-28 max-w-md mx-auto space-y-4">
         <DashboardHeader />
 
-        {/* Balance */}
+        {/* Balance & Chart combined */}
         <div className="glass-card p-6 space-y-2 animate-fade-in">
-          <BalanceCard />
           <RevenueChart />
         </div>
 
@@ -30,7 +28,7 @@ const Index = () => {
 
         {/* Transactions */}
         <div className="animate-fade-in" style={{ animationDelay: "200ms" }}>
-          <TransactionList />
+          <TransactionList pageSize={5} />
         </div>
       </div>
 

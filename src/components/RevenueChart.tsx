@@ -9,17 +9,23 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { format, differenceInDays, startOfDay, addDays, startOfWeek, addWeeks, startOfMonth, addMonths, subDays, subMonths, startOfYear, endOfYear, endOfDay } from "date-fns";
+import { format, differenceInDays, startOfDay, addDays, startOfWeek, addWeeks, startOfMonth, addMonths, subDays, subMonths, startOfYear, endOfYear, endOfDay, subYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { SlidersHorizontal } from "lucide-react";
 import { useTransactions } from "@/hooks/useTransactions";
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
+    const expenseObj = payload.find((p: any) => p.dataKey === "expense");
+    
     return (
-      <div className="glass-card px-3 py-2 text-xs">
-        <p className="text-muted-foreground">{label}</p>
-        <p className="text-foreground font-semibold">R${payload[0].value.toLocaleString("pt-BR")}</p>
+      <div className="glass-card px-3 py-2 text-xs space-y-1">
+        <p className="text-muted-foreground pb-1 border-b border-glass-border">{label}</p>
+        {expenseObj && (
+          <p className="text-destructive font-semibold">
+            Gastos: R${expenseObj.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+          </p>
+        )}
       </div>
     );
   }
@@ -33,9 +39,14 @@ const getLocalDateString = (d: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+import { TrendingUp, TrendingDown } from "lucide-react";
+import { useLanguage } from "@/i18n/LanguageContext";
+import { Link } from "react-router-dom";
+
 const RevenueChart = () => {
+  const { t } = useLanguage();
   const [activeFilter, setActiveFilter] = useState<"Weekly" | "Monthly" | "Yearly" | "Range">("Yearly");
-  const [activeBar, setActiveBar] = useState<number | null>(null);
+  const [activeDateIndex, setActiveDateIndex] = useState<number | null>(null);
 
   const [dateRange, setDateRange] = useState({
     from: getLocalDateString(startOfMonth(new Date())),
@@ -46,20 +57,18 @@ const RevenueChart = () => {
 
   const chartData = useMemo(() => {
     const incomes = transactions.filter(t => t.type === "income");
+    const expenses = transactions.filter(t => t.type === "expense");
     const now = new Date();
 
     let dStart: Date;
-    let dEnd: Date;
+    let dEnd: Date = now;
 
     if (activeFilter === "Weekly") {
-      dStart = subDays(now, 7);
-      dEnd = now;
+      dStart = subMonths(now, 3);
     } else if (activeFilter === "Monthly") {
-      dStart = subMonths(now, 1);
-      dEnd = now;
-    } else if (activeFilter === "Yearly") {
       dStart = subMonths(now, 12);
-      dEnd = now;
+    } else if (activeFilter === "Yearly") {
+      dStart = subYears(now, 5);
     } else {
       dStart = startOfDay(new Date(dateRange.from + "T12:00:00"));
       dEnd = endOfDay(new Date(dateRange.to + "T12:00:00"));
@@ -67,53 +76,92 @@ const RevenueChart = () => {
 
     const span = differenceInDays(dEnd, dStart);
 
-    if (span <= 14) {
-      // Group by Day
+    // DAILY GROUPING (Only for Range <= 14 days)
+    if (activeFilter === "Range" && span <= 14) {
       const days = [];
       let cDay = startOfDay(dStart);
       while (cDay <= dEnd) {
         const dStartMs = cDay.getTime();
-        const dayTxs = incomes.filter(t => startOfDay(new Date(t.date)).getTime() === dStartMs);
+        const dayIncomes = incomes.filter(t => startOfDay(new Date(t.date)).getTime() === dStartMs);
+        const dayExpenses = expenses.filter(t => startOfDay(new Date(t.date)).getTime() === dStartMs);
         days.push({
           name: format(cDay, "dd MMM", { locale: ptBR }),
-          value: dayTxs.reduce((acc, t) => acc + Number(t.amount), 0)
+          income: dayIncomes.reduce((acc, t) => acc + Number(t.amount), 0),
+          expense: dayExpenses.reduce((acc, t) => acc + Number(t.amount), 0)
         });
         cDay = addDays(cDay, 1);
       }
       return days;
     }
 
-    if (span <= 90) {
-      // Group by Week
+    // WEEKLY GROUPING
+    if (activeFilter === "Weekly" || (activeFilter === "Range" && span <= 90)) {
       const weeks = [];
       let cWeek = startOfWeek(dStart, { weekStartsOn: 0 }); // Sunday
       while (cWeek <= dEnd) {
         const nextWeek = addWeeks(cWeek, 1);
-        const weekTxs = incomes.filter(t => {
+        const weekFilter = (t: any) => {
           const d = new Date(t.date);
           return d >= cWeek && d < nextWeek;
-        });
+        };
+        const weekIncomes = incomes.filter(weekFilter);
+        const weekExpenses = expenses.filter(weekFilter);
+        
+        let label = `${format(cWeek, "dd/MM")} - ${format(subDays(nextWeek, 1), "dd/MM")}`;
         weeks.push({
-          name: format(cWeek, "dd MMM", { locale: ptBR }), // start of week
-          value: weekTxs.reduce((acc, t) => acc + Number(t.amount), 0)
+          name: label,
+          income: weekIncomes.reduce((acc, t) => acc + Number(t.amount), 0),
+          expense: weekExpenses.reduce((acc, t) => acc + Number(t.amount), 0)
         });
         cWeek = nextWeek;
       }
       return weeks;
     }
 
-    // Group by Month
+    // YEARLY GROUPING
+    if (activeFilter === "Yearly" || (activeFilter === "Range" && span > 730)) {
+      const years = [];
+      let cYear = startOfYear(dStart);
+      while (cYear <= dEnd) {
+        const nextYear = startOfYear(addMonths(cYear, 12));
+        const yearFilter = (t: any) => {
+          const d = new Date(t.date);
+          return d >= cYear && d < nextYear;
+        };
+        const yearIncomes = incomes.filter(yearFilter);
+        const yearExpenses = expenses.filter(yearFilter);
+
+        years.push({
+          name: format(cYear, "yyyy"),
+          income: yearIncomes.reduce((acc, t) => acc + Number(t.amount), 0),
+          expense: yearExpenses.reduce((acc, t) => acc + Number(t.amount), 0)
+        });
+        cYear = nextYear;
+      }
+      return years;
+    }
+
+    // MONTHLY GROUPING (Default for Monthly or Range > 90 and <= 730)
     const months = [];
     let cMonth = startOfMonth(dStart);
     while (cMonth <= dEnd) {
       const nextMonth = addMonths(cMonth, 1);
-      const monthTxs = incomes.filter(t => {
+      const monthFilter = (t: any) => {
         const d = new Date(t.date);
         return d >= cMonth && d < nextMonth;
-      });
+      };
+      const monthIncomes = incomes.filter(monthFilter);
+      const monthExpenses = expenses.filter(monthFilter);
+      
+      let monthName = format(cMonth, "MMMM", { locale: ptBR });
+      monthName = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+      
+      let label = activeFilter === "Monthly" ? monthName : format(cMonth, "MMM yyyy", { locale: ptBR });
+      
       months.push({
-        name: format(cMonth, "MMM yyyy", { locale: ptBR }),
-        value: monthTxs.reduce((acc, t) => acc + Number(t.amount), 0)
+        name: label,
+        income: monthIncomes.reduce((acc, t) => acc + Number(t.amount), 0),
+        expense: monthExpenses.reduce((acc, t) => acc + Number(t.amount), 0)
       });
       cMonth = nextMonth;
     }
@@ -121,8 +169,24 @@ const RevenueChart = () => {
 
   }, [transactions, activeFilter, dateRange]);
 
+  const totalExpense = chartData.reduce((acc, curr) => acc + curr.expense, 0);
+  const fmt = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+
   return (
     <div className="space-y-4">
+      {/* Totals Header inside Graph Div */}
+      <div className="space-y-3 pb-2 border-b border-glass-border">
+        <div className="flex items-center gap-3">
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">
+            R${fmt(totalExpense)}
+          </h2>
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-destructive/15 text-destructive">
+             <TrendingDown size={12} />
+             Gastos do Período
+          </span>
+        </div>
+      </div>
+
       {/* Filters Header Row */}
       <div className="flex w-full items-center gap-2">
         <div className="flex flex-1 p-1 rounded-full glass-card overflow-x-auto custom-scrollbar">
@@ -181,29 +245,25 @@ const RevenueChart = () => {
             />
             <Tooltip content={<CustomTooltip />} cursor={false} />
             <Bar
-              dataKey="value"
-              radius={[6, 6, 6, 6]}
-              onMouseEnter={(_, index) => setActiveBar(index)}
-              onMouseLeave={() => setActiveBar(null)}
-            >
-              {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={
-                    activeBar === index || (activeBar === null && index === chartData.length - 1)
-                      ? "hsl(217 91% 60%)"
-                      : "hsl(0 0% 100% / 0.06)"
-                  }
-                  style={{
-                    filter: (activeBar === index || (activeBar === null && index === chartData.length - 1)) ? "drop-shadow(0 0 10px hsl(217 91% 60% / 0.5))" : "none",
-                    transition: "all 0.3s ease",
-                  }}
-                />
-              ))}
-            </Bar>
+              dataKey="expense"
+              fill="hsl(348 83% 47%)"
+              radius={[4, 4, 4, 4]}
+              onMouseEnter={(_, index) => setActiveDateIndex(index)}
+              onMouseLeave={() => setActiveDateIndex(null)}
+              style={{
+                transition: "all 0.3s ease",
+              }}
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      <Link 
+        to="/metrics" 
+        className="w-full mt-2 flex justify-center items-center py-2.5 rounded-xl border border-glass-border text-sm font-semibold text-foreground hover:bg-glass-highlight transition-all"
+      >
+        Acessar mais métricas
+      </Link>
     </div>
   );
 };

@@ -17,7 +17,7 @@ export const useTransactions = (filters?: TransactionFilters, page: number = 1, 
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["transactions", user?.id, filters],
+    queryKey: ["transactions", user?.id, filters, page, pageSize],
     queryFn: async () => {
       let q = supabase
         .from("transactions")

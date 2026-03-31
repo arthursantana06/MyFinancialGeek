@@ -15,9 +15,8 @@ const iconMap: Record<string, any> = {
   zap: Zap,
 };
 
-export default function TransactionList({ externalFilters }: { externalFilters?: any }) {
+export default function TransactionList({ externalFilters, pageSize = 15 }: { externalFilters?: any, pageSize?: number }) {
   const [page, setPage] = useState(1);
-  const pageSize = 20;
 
   // Reset page back to 1 when filters change
   useEffect(() => {
