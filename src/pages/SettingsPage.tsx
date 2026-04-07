@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import type { Database } from "@/integrations/supabase/types";
 import EditCategoryDrawer from "@/components/EditCategoryDrawer";
+import OpenFinanceConnect from "@/components/OpenFinanceConnect";
 
 type CategoryType = Database["public"]["Enums"]["category_type"];
 
@@ -18,7 +19,7 @@ const SettingsPage = () => {
   const navigate = useNavigate();
   const { categories, isLoading, addCategory } = useCategories();
   const { paymentMethods, isLoading: isLoadingPMs, addPaymentMethod, deletePaymentMethod } = usePaymentMethods();
-  const [activeTab, setActiveTab] = useState<"categories" | "payment_methods">("categories");
+  const [activeTab, setActiveTab] = useState<"categories" | "payment_methods" | "integrations">("categories");
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -85,20 +86,27 @@ const SettingsPage = () => {
         </div>
 
         {/* Tab Selection */}
-        <div className="flex gap-2 bg-glass-inner p-1 rounded-2xl">
+        <div className="flex gap-2 bg-glass-inner p-1 rounded-2xl overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab("categories")}
-            className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === "categories" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
+            className={`flex-1 min-w-max px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === "categories" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
               }`}
           >
             {t("settings.categories")}
           </button>
           <button
             onClick={() => setActiveTab("payment_methods")}
-            className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === "payment_methods" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
+            className={`flex-1 min-w-max px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === "payment_methods" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
               }`}
           >
             {t("tx.paymentMethod")}
+          </button>
+          <button
+            onClick={() => setActiveTab("integrations")}
+            className={`flex-1 min-w-max px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === "integrations" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"
+              }`}
+          >
+            Integrações
           </button>
         </div>
 
@@ -213,6 +221,11 @@ const SettingsPage = () => {
             )}
           </div>
         )}
+
+        {activeTab === "integrations" && (
+          <OpenFinanceConnect />
+        )}
+
         {/* Add Category Drawer */}
         <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
           <DrawerContent className="bg-background border-t border-glass-border">
