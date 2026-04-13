@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="public/logocomtextosemfundo.png" alt="MyFinancialGeek Logo" width="300" />
+</div>
+
 # MyFinancialGeek
 
 Bem-vindo ao **MyFinancialGeek**, um aplicativo completo e moderno de gestão financeira, projetado para ajudar os usuários a controlar transações, acompanhar despesas através de múltiplas contas e cartões de crédito e visualizar resumos de receitas e gastos diários. 

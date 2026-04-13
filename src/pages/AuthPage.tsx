@@ -36,11 +36,8 @@ const AuthPage = () => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-8">
-        <div className="text-center space-y-2">
-          <div className="w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto glow-blue">
-            <div className="w-7 h-7 rounded-lg bg-primary" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">MyFinancialGeek</h1>
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <img src="/logocomtextosemfundo.png" alt="MyFinancialGeek Logo" className="w-64 max-w-[90%] h-auto mb-4 object-contain" />
           <p className="text-sm text-muted-foreground">
             {isLogin ? "Bem-vindo de volta" : "Crie sua conta"}
           </p>

@@ -16,8 +16,8 @@ const SideNav = () => {
 
   return (
     <aside className="hidden lg:flex flex-col items-center py-6 px-3 w-16 glass-card rounded-3xl gap-2">
-      <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center mb-4">
-        <div className="w-5 h-5 rounded-md bg-primary" />
+      <div className="w-10 h-10 flex items-center justify-center mb-4">
+        <img src="/simbolosemfundo.png" alt="Logo" className="w-full h-full object-contain" />
       </div>
 
       <div className="flex flex-col gap-1 flex-1">
