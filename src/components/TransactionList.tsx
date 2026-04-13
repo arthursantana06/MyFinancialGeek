@@ -75,7 +75,11 @@ export default function TransactionList({ externalFilters, pageSize = 15 }: { ex
                       className="w-10 h-10 rounded-xl bg-glass border border-glass flex items-center justify-center flex-shrink-0"
                       style={tx.categories ? { borderColor: tx.categories.color + "30" } : {}}
                     >
-                      <IconComp size={18} className="text-muted-foreground" strokeWidth={1.5} />
+                      {tx.categories?.icon_emoji ? (
+                        <span className="text-xl">{tx.categories.icon_emoji}</span>
+                      ) : (
+                        <IconComp size={18} className="text-muted-foreground" strokeWidth={1.5} />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
@@ -145,7 +149,10 @@ export default function TransactionList({ externalFilters, pageSize = 15 }: { ex
 
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">{t("tx.category")}</span>
-                  <span className="text-sm font-medium text-foreground">{selectedTx.categories?.name || "-"}</span>
+                  <div className="flex items-center gap-2">
+                    {selectedTx.categories?.icon_emoji && <span>{selectedTx.categories.icon_emoji}</span>}
+                    <span className="text-sm font-medium text-foreground">{selectedTx.categories?.name || "-"}</span>
+                  </div>
                 </div>
 
                 <div className="flex justify-between items-center">

@@ -22,12 +22,14 @@ const EditCategoryDrawer = ({ open, onOpenChange, category }: Props) => {
   const [name, setName] = useState("");
   const [type, setType] = useState<CategoryType>("expense");
   const [color, setColor] = useState(COLORS[0]);
+  const [emoji, setEmoji] = useState("");
 
   useEffect(() => {
     if (category && open) {
       setName(category.name);
       setType(category.type);
       setColor(category.color || COLORS[0]);
+      setEmoji(category.icon_emoji || "");
     }
   }, [category, open]);
 
@@ -41,6 +43,7 @@ const EditCategoryDrawer = ({ open, onOpenChange, category }: Props) => {
         name: name.trim(),
         type,
         color,
+        icon_emoji: emoji.trim() || null,
       });
       toast.success(t("common.save") + " realizado");
       onOpenChange(false);
@@ -95,6 +98,18 @@ const EditCategoryDrawer = ({ open, onOpenChange, category }: Props) => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t("settings.categoryName")}
+                className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Emoji (Opcional)</label>
+              <input
+                type="text"
+                value={emoji}
+                onChange={(e) => setEmoji(e.target.value)}
+                placeholder="Cole um emoji aqui (ex: 🍕)"
+                maxLength={2}
                 className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
               />
             </div>

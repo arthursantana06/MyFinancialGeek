@@ -25,6 +25,7 @@ const SettingsPage = () => {
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<CategoryType>("expense");
   const [newColor, setNewColor] = useState(COLORS[0]);
+  const [newEmoji, setNewEmoji] = useState("");
 
   const [editingCategory, setEditingCategory] = useState<any | null>(null);
 
@@ -40,10 +41,12 @@ const SettingsPage = () => {
         type: newType,
         color: newColor,
         icon: "circle",
+        icon_emoji: newEmoji.trim() || null,
       });
       toast.success(t("tx.added"));
       setDrawerOpen(false);
       setNewName("");
+      setNewEmoji("");
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -146,7 +149,11 @@ const SettingsPage = () => {
                           className="w-8 h-8 rounded-lg flex items-center justify-center"
                           style={{ backgroundColor: cat.color + "20" }}
                         >
-                          <Circle size={14} style={{ color: cat.color }} fill={cat.color} />
+                          {cat.icon_emoji ? (
+                            <span className="text-base">{cat.icon_emoji}</span>
+                          ) : (
+                            <Circle size={14} style={{ color: cat.color }} fill={cat.color} />
+                          )}
                         </div>
                         <span className="text-sm font-medium text-foreground flex-1">{cat.name}</span>
                       </button>
@@ -170,7 +177,11 @@ const SettingsPage = () => {
                           className="w-8 h-8 rounded-lg flex items-center justify-center"
                           style={{ backgroundColor: cat.color + "20" }}
                         >
-                          <Circle size={14} style={{ color: cat.color }} fill={cat.color} />
+                          {cat.icon_emoji ? (
+                            <span className="text-base">{cat.icon_emoji}</span>
+                          ) : (
+                            <Circle size={14} style={{ color: cat.color }} fill={cat.color} />
+                          )}
                         </div>
                         <span className="text-sm font-medium text-foreground flex-1">{cat.name}</span>
                       </button>
@@ -255,6 +266,18 @@ const SettingsPage = () => {
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
                     placeholder={t("settings.categoryName")}
+                    className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Emoji (Opcional)</label>
+                  <input
+                    type="text"
+                    value={newEmoji}
+                    onChange={(e) => setNewEmoji(e.target.value)}
+                    placeholder="Cole um emoji aqui (ex: 🍕)"
+                    maxLength={2}
                     className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
                   />
                 </div>

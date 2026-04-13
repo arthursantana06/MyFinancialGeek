@@ -15,6 +15,7 @@ import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
 import MetricsPage from "./pages/MetricsPage";
 import NotFound from "./pages/NotFound";
+import TransactionLimbo from "./pages/TransactionLimbo";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,7 @@ const App = () => (
               <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
               <Route path="/metrics" element={<ProtectedRoute><MetricsPage /></ProtectedRoute>} />
+              <Route path="/limbo" element={<ProtectedRoute><TransactionLimbo /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

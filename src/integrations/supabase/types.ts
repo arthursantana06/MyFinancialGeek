@@ -14,11 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      authorized_users: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      automation_rules: {
+        Row: {
+          category_id: string
+          created_at: string | null
+          id: string
+          keyword: string
+          user_id: string
+        }
+        Insert: {
+          category_id: string
+          created_at?: string | null
+          id?: string
+          keyword: string
+          user_id: string
+        }
+        Update: {
+          category_id?: string
+          created_at?: string | null
+          id?: string
+          keyword?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_rules_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categories: {
         Row: {
           color: string
           created_at: string
           icon: string
+          icon_emoji: string | null
           id: string
           name: string
           type: Database["public"]["Enums"]["category_type"]
@@ -28,6 +79,7 @@ export type Database = {
           color?: string
           created_at?: string
           icon?: string
+          icon_emoji?: string | null
           id?: string
           name: string
           type: Database["public"]["Enums"]["category_type"]
@@ -37,6 +89,7 @@ export type Database = {
           color?: string
           created_at?: string
           icon?: string
+          icon_emoji?: string | null
           id?: string
           name?: string
           type?: Database["public"]["Enums"]["category_type"]
@@ -119,6 +172,65 @@ export type Database = {
           },
         ]
       }
+      folders: {
+        Row: {
+          cover_url: string | null
+          created_at: string | null
+          id: string
+          name: string
+        }
+        Insert: {
+          cover_url?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+        }
+        Update: {
+          cover_url?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      moments: {
+        Row: {
+          audio_url: string | null
+          created_at: string | null
+          date: string | null
+          description: string | null
+          folder_id: string | null
+          id: string
+          image_url: string
+        }
+        Insert: {
+          audio_url?: string | null
+          created_at?: string | null
+          date?: string | null
+          description?: string | null
+          folder_id?: string | null
+          id?: string
+          image_url: string
+        }
+        Update: {
+          audio_url?: string | null
+          created_at?: string | null
+          date?: string | null
+          description?: string | null
+          folder_id?: string | null
+          id?: string
+          image_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "moments_folder_id_fkey"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_methods: {
         Row: {
           created_at: string
@@ -145,6 +257,56 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      pluggy_connections: {
+        Row: {
+          created_at: string | null
+          id: string
+          institution_name: string | null
+          pluggy_account_id: string | null
+          pluggy_account_name: string | null
+          pluggy_account_number: string | null
+          pluggy_account_type: string | null
+          pluggy_item_id: string
+          updated_at: string | null
+          user_id: string
+          wallet_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          institution_name?: string | null
+          pluggy_account_id?: string | null
+          pluggy_account_name?: string | null
+          pluggy_account_number?: string | null
+          pluggy_account_type?: string | null
+          pluggy_item_id: string
+          updated_at?: string | null
+          user_id: string
+          wallet_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          institution_name?: string | null
+          pluggy_account_id?: string | null
+          pluggy_account_name?: string | null
+          pluggy_account_number?: string | null
+          pluggy_account_type?: string | null
+          pluggy_item_id?: string
+          updated_at?: string | null
+          user_id?: string
+          wallet_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pluggy_connections_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -175,6 +337,66 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      staged_transactions: {
+        Row: {
+          amount: number
+          created_at: string | null
+          date: string
+          description: string
+          id: string
+          pluggy_transaction_id: string
+          status: string
+          suggested_category_id: string | null
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at: string | null
+          user_id: string
+          wallet_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          date: string
+          description: string
+          id?: string
+          pluggy_transaction_id: string
+          status?: string
+          suggested_category_id?: string | null
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string | null
+          user_id: string
+          wallet_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          date?: string
+          description?: string
+          id?: string
+          pluggy_transaction_id?: string
+          status?: string
+          suggested_category_id?: string | null
+          type?: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string | null
+          user_id?: string
+          wallet_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staged_transactions_suggested_category_id_fkey"
+            columns: ["suggested_category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staged_transactions_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transactions: {
         Row: {

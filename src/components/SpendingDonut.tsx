@@ -4,6 +4,8 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { subDays, subMonths, startOfDay, endOfDay } from "date-fns";
 import { SlidersHorizontal } from "lucide-react";
 import { useTransactions } from "@/hooks/useTransactions";
+import { useCategories } from "@/hooks/useCategories";
+import { Circle } from "lucide-react";
 
 const COLORS = [
   "hsl(0 84% 60%)",
@@ -24,6 +26,7 @@ const getLocalDateString = (d: Date) => {
 export default function SpendingDonut() {
   const { t } = useLanguage();
   const { transactions } = useTransactions();
+  const { categories } = useCategories();
 
   const [activeFilter, setActiveFilter] = useState<"Weekly" | "Monthly" | "Yearly" | "Range">("Monthly");
   const [dateRange, setDateRange] = useState({
@@ -64,8 +67,15 @@ export default function SpendingDonut() {
       return acc;
     }, {});
 
-    return Object.values(byCategory).sort((a, b) => b.value - a.value);
-  }, [transactions, activeFilter, dateRange]);
+    return Object.keys(byCategory).map(catName => {
+      const cat = categories.find(c => c.name === catName);
+      return { 
+        name: catName, 
+        value: byCategory[catName].value,
+        emoji: cat?.icon_emoji
+      };
+    }).sort((a, b) => b.value - a.value);
+  }, [transactions, activeFilter, dateRange, categories]);
 
   const total = data.reduce((s, d) => s + d.value, 0);
   const chartData = data.length > 0 ? data : [{ name: "No data", value: 1 }];
@@ -141,6 +151,7 @@ export default function SpendingDonut() {
             <div key={item.name} className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                {item.emoji && <span className="text-[11px]">{item.emoji}</span>}
                 <span className="text-[11px] text-muted-foreground truncate">{item.name}</span>
               </div>
               {item.value > 0 && (

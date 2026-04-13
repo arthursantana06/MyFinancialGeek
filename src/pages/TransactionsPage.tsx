@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import TransactionList from "@/components/TransactionList";
 import BottomNav from "@/components/BottomNav";
 import { useLanguage } from "@/i18n/LanguageContext";
@@ -6,12 +7,13 @@ import { useFilteredSum } from "@/hooks/useTransactions";
 import { useCategories } from "@/hooks/useCategories";
 import { useWallets } from "@/hooks/useWallets";
 
-import { Filter, Wallet, Tag, Calendar, ChevronDown } from "lucide-react";
+import { Filter, Wallet, Tag, Calendar, ChevronDown, Sparkles } from "lucide-react";
 
 const TransactionsPage = () => {
   const { t } = useLanguage();
   const { categories } = useCategories();
   const { wallets } = useWallets();
+  const navigate = useNavigate();
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -32,9 +34,18 @@ const TransactionsPage = () => {
   return (
     <div className="min-h-screen bg-background p-4 pb-28">
       <div className="max-w-md mx-auto space-y-4">
-        <div className="py-4">
-          <h1 className="text-xl font-bold text-foreground">{t("nav.activity")}</h1>
-          <p className="text-xs text-muted-foreground">{t("tx.allTransactions")}</p>
+        <div className="flex items-center justify-between py-4">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">{t("nav.activity")}</h1>
+            <p className="text-xs text-muted-foreground">{t("tx.allTransactions")}</p>
+          </div>
+          <button
+            onClick={() => navigate("/limbo")}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl glass-card text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Sparkles size={14} />
+            Consolidar
+          </button>
         </div>
 
         {/* Filters */}
