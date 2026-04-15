@@ -1,4 +1,7 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useStagedTransactions } from "@/hooks/useStagedTransactions";
 import { useAutomationRules } from "@/hooks/useAutomationRules";
 import { useCategories } from "@/hooks/useCategories";
@@ -20,17 +23,43 @@ import {
   ArrowLeft,
   Calendar,
   Filter,
+  XCircle,
+  RefreshCw,
+  Zap,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
 
 const TransactionLimbo = () => {
   const navigate = useNavigate();
-  const { stagedTransactions, isLoading, approveTransaction, rejectTransaction } =
-    useStagedTransactions();
+  const { user } = useAuth();
+  const { 
+    stagedTransactions, 
+    isLoading, 
+    approveTransaction, 
+    rejectTransaction, 
+    deletePermanently,
+    rejectAllPending, 
+    resetRejectedTransactions,
+    forceSync 
+  } = useStagedTransactions();
   const { rules, addRule, deleteRule, findSuggestedCategory } = useAutomationRules();
   const { categories } = useCategories();
   const { wallets } = useWallets();
+
+  // Fetch connections to map account names/institutions
+  const { data: connections } = useQuery({
+    queryKey: ["pluggy_connections", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("pluggy_connections").select("*");
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // State for tabs
+  const [activeBankId, setActiveBankId] = useState<string>("all");
 
   // Filters
   const [walletFilter, setWalletFilter] = useState("all");
@@ -55,9 +84,40 @@ const TransactionLimbo = () => {
   // Success animation state
   const [successId, setSuccessId] = useState<string | null>(null);
 
-  // Filtered list
+  // Unique Institutions derived from data
+  const banks = useMemo(() => {
+    const map = new Map<string, { name: string; itemId: string | null }>();
+    stagedTransactions.forEach((tx) => {
+      const conn = connections?.find((c) => c.pluggy_account_id === tx.pluggy_account_id);
+      const name = conn?.pluggy_account_name || conn?.institution_name || "Geral";
+      const id = tx.pluggy_account_id || "geral";
+      if (!map.has(id)) {
+        map.set(id, { name, itemId: conn?.pluggy_item_id || null });
+      }
+    });
+    return Array.from(map.entries()).map(([id, info]) => ({ id, ...info }));
+  }, [stagedTransactions, connections]);
+
+  // Unique wallets present in staged
+  const uniqueWalletIds = useMemo(() => {
+    const ids = new Set(stagedTransactions.map((t) => t.wallet_id));
+    return wallets.filter((w) => ids.has(w.id));
+  }, [stagedTransactions, wallets]);
+
+  const hasUnlinked = useMemo(
+    () => stagedTransactions.some((t) => !t.wallet_id),
+    [stagedTransactions]
+  );
+
+  // Filtered list with Tab support
   const filtered = useMemo(() => {
     let list = stagedTransactions;
+    
+    // Bank Tab filter
+    if (activeBankId !== "all") {
+      list = list.filter((t) => (t.pluggy_account_id || "geral") === activeBankId);
+    }
+
     if (walletFilter === "__none__") {
       list = list.filter((t) => !t.wallet_id);
     } else if (walletFilter !== "all") {
@@ -71,18 +131,7 @@ const TransactionLimbo = () => {
       list = list.filter((t) => t.date <= toEnd);
     }
     return list;
-  }, [stagedTransactions, walletFilter, dateFrom, dateTo]);
-
-  // Unique wallets present in staged
-  const uniqueWalletIds = useMemo(() => {
-    const ids = new Set(stagedTransactions.map((t) => t.wallet_id));
-    return wallets.filter((w) => ids.has(w.id));
-  }, [stagedTransactions, wallets]);
-
-  const hasUnlinked = useMemo(
-    () => stagedTransactions.some((t) => !t.wallet_id),
-    [stagedTransactions]
-  );
+  }, [stagedTransactions, walletFilter, dateFrom, dateTo, activeBankId]);
 
   const openDetail = (tx: (typeof stagedTransactions)[number]) => {
     setSelected(tx);
@@ -195,13 +244,99 @@ const TransactionLimbo = () => {
               </div>
             </div>
           </div>
-          <button
-            onClick={() => setShowRulesPanel(!showRulesPanel)}
-            className={`w-10 h-10 rounded-2xl glass-card flex items-center justify-center transition-all active:scale-90 ${showRulesPanel ? "bg-primary text-white border-primary" : "text-muted-foreground"}`}
-          >
-            <Wand2 size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (window.confirm('Desfazer todos os "Ignorar"? Isso trará de volta as transações que você removeu da lista.')) {
+                  resetRejectedTransactions.mutate(undefined, {
+                    onSuccess: () => toast.success('Transações restauradas com sucesso!'),
+                    onError: (err: any) => toast.error('Erro ao restaurar: ' + err.message),
+                  });
+                }
+              }}
+              disabled={resetRejectedTransactions.isPending}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl glass-card text-xs font-medium text-primary hover:bg-primary/10 transition-all active:scale-95 disabled:opacity-50"
+              title="Recuperar transações ignoradas"
+            >
+              {resetRejectedTransactions.isPending ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <RefreshCw size={14} />
+              )}
+              Sincronizar
+            </button>
+
+            {filtered.length > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm(`Tem certeza que deseja ignorar todas as ${filtered.length} transações pendentes?`)) {
+                    rejectAllPending.mutate(undefined, {
+                      onSuccess: () => toast.success('Todas as transações pendentes foram ignoradas.'),
+                      onError: (err: any) => toast.error('Erro: ' + err.message),
+                    });
+                  }
+                }}
+                disabled={rejectAllPending.isPending}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl glass-card text-xs font-medium text-destructive hover:bg-destructive/10 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {rejectAllPending.isPending ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <XCircle size={14} />
+                )}
+                Ignorar Todas
+              </button>
+            )}
+            <button
+              onClick={() => setShowRulesPanel(!showRulesPanel)}
+              className={`w-10 h-10 rounded-2xl glass-card flex items-center justify-center transition-all active:scale-90 ${showRulesPanel ? "bg-primary text-white border-primary" : "text-muted-foreground"}`}
+            >
+              <Wand2 size={20} />
+            </button>
+          </div>
         </header>
+
+        {/* Bank Tabs */}
+        {!isLoading && banks.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+            <button
+              onClick={() => setActiveBankId("all")}
+              className={`px-4 py-2 rounded-2xl text-xs font-semibold whitespace-nowrap transition-all ${
+                activeBankId === "all" ? "bg-primary text-white shadow-lg glow-blue" : "glass-card text-muted-foreground"
+              }`}
+            >
+              Todos
+            </button>
+            {banks.map((bank) => (
+              <div key={bank.id} className="flex gap-1">
+                <button
+                  onClick={() => setActiveBankId(bank.id)}
+                  className={`px-4 py-2 rounded-2xl text-xs font-semibold whitespace-nowrap transition-all ${
+                    activeBankId === bank.id ? "bg-white/10 text-white border border-white/20 shadow-md" : "glass-card text-muted-foreground"
+                  }`}
+                >
+                  {bank.name}
+                </button>
+                {bank.itemId && activeBankId === bank.id && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Isso apagará o histórico local deste banco e buscará tudo novamente. Deseja continuar?")) {
+                        forceSync.mutate(bank.itemId!, {
+                          onSuccess: () => toast.success("Sincronização profunda concluída!"),
+                        });
+                      }
+                    }}
+                    disabled={forceSync.isPending}
+                    className="w-9 h-9 rounded-2xl glass-card flex items-center justify-center text-primary active:scale-90 disabled:opacity-50"
+                    title="Resetar e Sincronizar Tudo"
+                  >
+                    {forceSync.isPending ? <Loader2 size={12} className="animate-spin" /> : <Zap size={14} />}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Rules Summary (Glassy Notification-like card) */}
         {showRulesPanel && (
@@ -348,10 +483,10 @@ const TransactionLimbo = () => {
                   key={tx.id}
                   onClick={() => openDetail(tx)}
                   style={{ animationDelay: `${idx * 40}ms` }}
-                  className={`group relative glass-card p-5 text-left transition-all hover:translate-y-[-2px] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden ${isSuccess ? 'border-chart-green shadow-[0_0_30px_rgba(16,185,129,0.15)]' : ''}`}
+                  className={`group relative glass-card p-5 text-left transition-all hover:translate-y-[-2px] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden ${isSuccess ? 'border-chart-green shadow-[0_0_30px_rgba(16,185,129,0.15)]' : ''} ${tx.status === 'rejected' ? 'opacity-50' : ''}`}
                 >
                   {/* Subtle edge glow based on wallet */}
-                  <div className="absolute top-0 left-0 w-[2px] h-full opacity-40" style={{ backgroundColor: wColor }} />
+                  <div className={`absolute top-0 left-0 w-[2px] h-full ${tx.status === 'rejected' ? 'opacity-20' : 'opacity-40'}`} style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
                   
                   {/* Success Reveal Overlay */}
                   {isSuccess && (
@@ -365,19 +500,19 @@ const TransactionLimbo = () => {
                   <div className="flex items-center gap-4">
                     {/* Wallet Icon with specific glow */}
                     <div 
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden"
-                      style={{ backgroundColor: `${wColor}15` }}
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden ${tx.status === 'rejected' ? 'bg-slate-500/10' : ''}`}
+                      style={tx.status !== 'rejected' ? { backgroundColor: `${wColor}15` } : {}}
                     >
-                       <div className="absolute inset-0 opacity-20 blur-sm" style={{ backgroundColor: wColor }} />
-                       <Wallet size={20} className="relative z-10" style={{ color: wColor }} />
+                       <div className="absolute inset-0 opacity-20 blur-sm" style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
+                       <Wallet size={20} className="relative z-10" style={{ color: tx.status === 'rejected' ? '#64748b' : wColor }} />
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-1">
                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-bold text-white/90 truncate leading-none">
+                          <p className={`text-sm font-bold truncate leading-none ${tx.status === 'rejected' ? 'text-slate-500 line-through' : 'text-white/90'}`}>
                             {tx.description}
                           </p>
-                          <span className={`text-base font-black tabular-nums shrink-0 ${tx.type === 'income' ? 'text-chart-green' : 'text-white'}`}>
+                          <span className={`text-base font-black tabular-nums shrink-0 ${tx.status === 'rejected' ? 'text-slate-500 line-through' : tx.type === 'income' ? 'text-chart-green' : 'text-white'}`}>
                             {tx.type === 'income' ? '+\u00a0' : '-\u00a0'}
                             {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
@@ -391,6 +526,11 @@ const TransactionLimbo = () => {
                           <span className="text-[11px] font-medium text-muted-foreground truncate uppercase tracking-tight">
                             {walletName(tx.wallet_id)}
                           </span>
+                          {tx.status === 'rejected' && (
+                            <span className="text-[9px] font-bold text-slate-600 bg-black/40 px-1.5 py-0.5 rounded-md border border-white/5">
+                              IGNORADO
+                            </span>
+                          )}
                           
                           {suggestedCat && (
                             <>
@@ -527,14 +667,42 @@ const TransactionLimbo = () => {
             </div>
 
             {/* Action Buttons (Floating style) */}
-            <div className="flex gap-4 pt-4">
+            <div className="flex gap-3 pt-4">
                <button
                   onClick={handleReject}
                   disabled={rejectTransaction.isPending}
-                  className="flex-1 py-4 rounded-2xl glass-inner border-white/10 text-sm font-bold text-white/70 hover:bg-white/5 active:scale-95 transition-all disabled:opacity-50"
+                  className={`flex-1 py-4 rounded-2xl glass-inner border-white/10 text-sm font-bold active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${
+                    selected.status === 'rejected' ? 'text-primary hover:bg-primary/10' : 'text-white/70 hover:bg-white/5'
+                  }`}
                >
-                  Ignorar
+                  {selected.status === 'rejected' ? (
+                    <>
+                      <RefreshCw size={18} className="animate-in spin-in-180 duration-500" />
+                      Restaurar
+                    </>
+                  ) : (
+                    <>
+                      <XCircle size={18} />
+                      Ignorar
+                    </>
+                  )}
                </button>
+
+               <button
+                 onClick={async () => {
+                   if (window.confirm("Deseja deletar permanentemente esta transação da lista?")) {
+                     await deletePermanently.mutateAsync(selected.id);
+                     toast.success("Deletado com sucesso.");
+                     closeDetail();
+                   }
+                 }}
+                 disabled={deletePermanently.isPending}
+                 className="w-14 rounded-2xl glass-inner border-white/5 flex items-center justify-center text-destructive/40 hover:text-destructive hover:bg-destructive/10 active:scale-90 transition-all disabled:opacity-50"
+                 title="Deletar Permanente"
+               >
+                 {deletePermanently.isPending ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={18} />}
+               </button>
+
                <button
                   onClick={handleApprove}
                   disabled={approveTransaction.isPending}

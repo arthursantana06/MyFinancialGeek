@@ -14,7 +14,7 @@ export const useStagedTransactions = () => {
         .from("staged_transactions")
         .select("*, wallets(*), categories:suggested_category_id(*)")
         .eq("user_id", user!.id)
-        .eq("status", "pending")
+        .in("status", ["pending", "rejected"]) // NEW: include rejected
         .order("date", { ascending: false });
       if (error) throw error;
       return data;
@@ -63,22 +63,6 @@ export const useStagedTransactions = () => {
         .eq("user_id", user!.id);
       if (updateError) throw updateError;
     },
-    onMutate: async ({ stagedId }) => {
-      // Optimistic: remove from list immediately
-      await queryClient.cancelQueries({ queryKey: ["staged_transactions"] });
-      const previous = queryClient.getQueryData<any[]>(["staged_transactions", user?.id]);
-      queryClient.setQueryData(
-        ["staged_transactions", user?.id],
-        (old: any[] | undefined) => old?.filter((t) => t.id !== stagedId) ?? []
-      );
-      return { previous };
-    },
-    onError: (_err, _vars, context) => {
-      // Rollback on error
-      if (context?.previous) {
-        queryClient.setQueryData(["staged_transactions", user?.id], context.previous);
-      }
-    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -95,19 +79,60 @@ export const useStagedTransactions = () => {
         .eq("user_id", user!.id);
       if (error) throw error;
     },
-    onMutate: async (stagedId) => {
-      await queryClient.cancelQueries({ queryKey: ["staged_transactions"] });
-      const previous = queryClient.getQueryData<any[]>(["staged_transactions", user?.id]);
-      queryClient.setQueryData(
-        ["staged_transactions", user?.id],
-        (old: any[] | undefined) => old?.filter((t) => t.id !== stagedId) ?? []
-      );
-      return { previous };
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
     },
-    onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(["staged_transactions", user?.id], context.previous);
-      }
+  });
+
+  const deletePermanently = useMutation({
+    mutationFn: async (stagedId: string) => {
+      const { error } = await supabase
+        .from("staged_transactions")
+        .delete()
+        .eq("id", stagedId)
+        .eq("user_id", user!.id);
+      if (error) throw error;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
+    },
+  });
+
+  const rejectAllPending = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("staged_transactions")
+        .update({ status: "rejected", updated_at: new Date().toISOString() })
+        .eq("user_id", user!.id)
+        .eq("status", "pending");
+      if (error) throw error;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
+    },
+  });
+
+  const resetRejectedTransactions = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase
+        .from("staged_transactions")
+        .update({ status: "pending", updated_at: new Date().toISOString() })
+        .eq("user_id", user!.id)
+        .eq("status", "rejected");
+      if (error) throw error;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
+    },
+  });
+
+  const forceSync = useMutation({
+    mutationFn: async (itemId: string) => {
+      const { data, error } = await supabase.functions.invoke("pluggy-sync-transactions", {
+        body: { itemId, userId: user!.id, force: true },
+      });
+      if (error) throw error;
+      return data;
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
@@ -119,5 +144,9 @@ export const useStagedTransactions = () => {
     isLoading: query.isLoading,
     approveTransaction,
     rejectTransaction,
+    deletePermanently,
+    rejectAllPending,
+    resetRejectedTransactions,
+    forceSync,
   };
 };

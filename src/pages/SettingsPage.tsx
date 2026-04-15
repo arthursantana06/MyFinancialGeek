@@ -277,7 +277,7 @@ const SettingsPage = () => {
                     value={newEmoji}
                     onChange={(e) => setNewEmoji(e.target.value)}
                     placeholder="Cole um emoji aqui (ex: 🍕)"
-                    maxLength={2}
+                    maxLength={14}
                     className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
                   />
                 </div>

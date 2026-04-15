@@ -4,10 +4,13 @@ import { useTransactions } from "@/hooks/useTransactions";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import { useCategories } from "@/hooks/useCategories";
 import { useLanguage } from "@/i18n/LanguageContext";
-import { CreditCard, Plus, Banknote, Smartphone, Wallet as WalletIcon, Circle, Pencil, Trash2 } from "lucide-react";
+import { CreditCard, Plus, Banknote, Smartphone, Wallet as WalletIcon, Circle, Pencil, Trash2, Link2 } from "lucide-react";
 import BottomNav from "@/components/BottomNav";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"];
 
@@ -18,6 +21,22 @@ const WalletsPage = () => {
   const { paymentMethods } = usePaymentMethods();
   const { categories } = useCategories();
   const { t } = useLanguage();
+  const { user } = useAuth();
+
+  // Fetch wallets that have Open Finance connections
+  const { data: linkedWalletIds } = useQuery({
+    queryKey: ['pluggy_linked_wallets', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pluggy_connections')
+        .select('wallet_id')
+        .eq('user_id', user!.id)
+        .not('wallet_id', 'is', null);
+      if (error) throw error;
+      return new Set((data ?? []).map(d => d.wallet_id).filter(Boolean));
+    },
+    enabled: !!user,
+  });
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingWalletId, setEditingWalletId] = useState<string | null>(null);
@@ -279,7 +298,15 @@ const WalletsPage = () => {
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-foreground">{w.name}</p>
-                            <p className="text-[10px] text-muted-foreground uppercase">{typeLabel(w.type)}</p>
+                            <p className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5">
+                              {typeLabel(w.type)}
+                              {linkedWalletIds?.has(w.id) && (
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[8px] font-bold uppercase tracking-wider">
+                                  <Link2 size={8} />
+                                  Open Finance
+                                </span>
+                              )}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
