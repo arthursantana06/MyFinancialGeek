@@ -269,26 +269,6 @@ const AddTransactionDrawer = ({
             {/* Unified Payment Selection */}
             <div className="space-y-1.5 mt-2">
               <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">{t("tx.paymentMethod")}</label>
-              {initialData?.stagedId ? (
-                <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar -mx-4 px-4">
-                  {wallets.filter(w => w.id === selectedUnifiedId).map((w) => (
-                    <div
-                      key={w.id}
-                      className="px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white/5 text-white/20 border border-white/5 shrink-0 flex items-center gap-2"
-                    >
-                      {w.type === "credit_card" ? "💳" : "🏦"} {w.name}
-                    </div>
-                  ))}
-                  {!wallets.some(w => w.id === selectedUnifiedId) && paymentMethods.filter(m => m.id === selectedUnifiedId).map(m => (
-                    <div
-                       key={m.id}
-                      className="px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white/5 text-white/20 border border-white/5 shrink-0 flex items-center gap-2"
-                    >
-                      {m.name}
-                    </div>
-                  ))}
-                </div>
-              ) : (
                 <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar -mx-4 px-4">
                   {wallets.map((w) => (
                     <button
@@ -315,7 +295,6 @@ const AddTransactionDrawer = ({
                     </button>
                   ))}
                 </div>
-              )}
             </div>
 
             {/* Discrete Contextual Actions for Staged Transactions */}
