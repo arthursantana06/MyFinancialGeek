@@ -44,6 +44,7 @@ const WalletsPage = () => {
   const [name, setName] = useState("");
   const [walletType, setWalletType] = useState<"checking" | "credit_card">("checking");
   const [color, setColor] = useState(COLORS[0]);
+  const [institutionName, setInstitutionName] = useState("");
   const [creditLimit, setCreditLimit] = useState("");
   const [statementDay, setStatementDay] = useState("");
   const [dueDay, setDueDay] = useState("");
@@ -52,6 +53,7 @@ const WalletsPage = () => {
   const openAddDrawer = () => {
     setEditingWalletId(null);
     setName("");
+    setInstitutionName("");
     setWalletType("checking");
     setColor(COLORS[0]);
     setCreditLimit("");
@@ -64,6 +66,7 @@ const WalletsPage = () => {
   const openEditDrawer = (w: any) => {
     setEditingWalletId(w.id);
     setName(w.name);
+    setInstitutionName(w.institution_name || "");
     setWalletType(w.type === "credit_card" ? "credit_card" : "checking");
     setColor(w.color);
     setCreditLimit(w.credit_limit ? w.credit_limit.toString() : "");
@@ -87,6 +90,7 @@ const WalletsPage = () => {
     try {
       const payload = {
         name,
+        institution_name: institutionName.trim() || "Diversos",
         type: walletType,
         color,
         balance: 0,
@@ -278,91 +282,128 @@ const WalletsPage = () => {
               </div>
             )}
 
-            {/* Credit Cards List */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Cartões e Contas</h3>
+            {/* Credit Cards List / Wallets grouped by Institution */}
+            <div className="space-y-6">
               {wallets.length === 0 ? (
                 <div className="glass-card p-8 text-center">
                   <CreditCard size={32} className="text-muted-foreground mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">{t("wallets.noWallets")}</p>
                 </div>
               ) : (
-                wallets.map((w) => {
-                  const Icon = w.type === "checking" ? Banknote : CreditCard;
-                  const cardStats = cardsStats[w.id];
-                  const catsStats = cardsCategoriesStats[w.id] ? Object.values(cardsCategoriesStats[w.id]).sort((a, b) => b.total - a.total).slice(0, 3) : [];
-
-                  // For checking, it now shows the sum of the current month expenses
-                  // For credit cards, it calculates invoice 
-                  const displayExpense = cardStats?.total || 0;
-                  const availableLimit = w.type === "credit_card" && w.credit_limit ? w.credit_limit - displayExpense : 0;
-
-                  return (
-                    <div key={w.id} className="glass-card p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: w.color + "20" }}>
-                            <Icon size={18} style={{ color: w.color }} strokeWidth={1.5} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">{w.name}</p>
-                            <p className="text-[10px] text-muted-foreground uppercase flex items-center gap-1.5">
-                              {typeLabel(w.type)}
-                              {linkedWalletIds?.has(w.id) && (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[8px] font-bold uppercase tracking-wider">
-                                  <Link2 size={8} />
-                                  Open Finance
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => openEditDrawer(w)} className="p-2 text-muted-foreground hover:text-foreground transition-colors">
-                            <Pencil size={15} />
-                          </button>
-                          <button onClick={() => handleDelete(w.id, w.name)} className="p-2 text-muted-foreground hover:text-destructive transition-colors">
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex items-end justify-between !mt-2">
-                        <div>
-                          <p className="text-[11px] text-muted-foreground">
-                            {w.type === "credit_card" ? "Fatura Atual" : "Gastos neste Mês"}
-                          </p>
-                          <p className="text-lg font-bold text-foreground">
-                            R${Number(displayExpense).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                          </p>
-                        </div>
-                        {w.type === "credit_card" && w.credit_limit && (
-                          <div className="text-right">
-                            <p className="text-[11px] text-muted-foreground">Limite Disponível</p>
-                            <p className="text-sm font-semibold text-emerald-400">
-                              R${Number(availableLimit).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {catsStats.length > 0 && (
-                        <div className="pt-2 border-t border-glass-border">
-                          <div className="flex flex-wrap gap-2 text-[10px] font-medium text-muted-foreground">
-                            {catsStats.map((cstat, i) => (
-                              <div key={i} className="flex items-center gap-1.5">
-                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cstat.color }} />
-                                <span className="truncate max-w-[80px]">{cstat.name}</span>
-                                <span className="text-foreground">R${cstat.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
+                Object.entries(
+                  wallets.reduce((acc, w) => {
+                    const inst = w.institution_name || 'Diversos';
+                    if (!acc[inst]) acc[inst] = [];
+                    acc[inst].push(w);
+                    return acc;
+                  }, {} as Record<string, typeof wallets>)
+                ).map(([institution, instWallets]) => (
+                  <div key={institution} className="space-y-4">
+                    <div className="flex items-center gap-3 px-2">
+                      <div className="w-1.5 h-6 bg-primary rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-[0.15em]">
+                        {institution}
+                      </h3>
                     </div>
-                  );
-                })
+
+                    <div className="grid grid-cols-1 gap-3 pl-4 border-l border-white/5">
+                      {instWallets.map((w) => {
+                        const Icon = w.type === "checking" ? Banknote : CreditCard;
+                        const cardStats = cardsStats[w.id];
+                        const catsStats = cardsCategoriesStats[w.id] ? Object.values(cardsCategoriesStats[w.id]).sort((a, b) => b.total - a.total).slice(0, 3) : [];
+
+                        const displayExpense = cardStats?.total || 0;
+                        const availableLimit = w.type === "credit_card" && (w.credit_limit || w.credit_limit === 0) ? w.credit_limit - displayExpense : 0;
+
+                        return (
+                          <div key={w.id} className="group relative glass-card p-4 transition-all hover:bg-white/[0.03] hover:translate-x-1">
+                            {/* Accent line */}
+                            <div className="absolute top-0 left-0 w-1 h-full opacity-40 group-hover:opacity-100 transition-opacity rounded-l-3xl" style={{ backgroundColor: w.color }} />
+                            
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-white/5 border border-white/5 shadow-inner">
+                                  <Icon size={16} style={{ color: w.color }} strokeWidth={2} />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-white/90 leading-tight">{w.name}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded-md">
+                                      {typeLabel(w.type)}
+                                    </span>
+                                    {linkedWalletIds?.has(w.id) && (
+                                      <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[7px] font-black uppercase tracking-tighter border border-primary/20">
+                                        <Zap size={8} fill="currentColor" />
+                                        SYNC
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button onClick={() => openEditDrawer(w)} className="p-2 text-muted-foreground hover:text-white transition-colors">
+                                  <Pencil size={14} />
+                                </button>
+                                <button onClick={() => handleDelete(w.id, w.name)} className="p-2 text-muted-foreground hover:text-destructive transition-colors">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/[0.03]">
+                              <div>
+                                <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.1em] mb-1">
+                                  {w.type === "credit_card" ? "Fatura Atual" : "Gastos no Mês"}
+                                </p>
+                                <p className="text-base font-black text-white tabular-nums">
+                                  R${Number(displayExpense).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </p>
+                              </div>
+                              {w.type === "credit_card" && (w.credit_limit || w.credit_limit === 0) ? (
+                                <div className="text-right">
+                                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.1em] mb-1">Limite Livre</p>
+                                  <p className="text-base font-black text-emerald-400 tabular-nums">
+                                    R${Number(availableLimit).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                  </p>
+                                </div>
+                              ) : w.type === "credit_card" ? (
+                                <div className="text-right flex flex-col justify-end">
+                                  <p className="text-[9px] text-muted-foreground/60 italic font-medium">Limite não extraído</p>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {w.type === "credit_card" && (w.closing_day || w.due_day) && (
+                              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/[0.03]">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-500/40" />
+                                  <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest">Fechamento</span>
+                                  <span className="text-[10px] font-black text-white/70">Dia {w.closing_day || '--'}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-rose-500/40" />
+                                  <span className="text-[8px] font-black text-muted-foreground uppercase tracking-widest">Vencimento</span>
+                                  <span className="text-[10px] font-black text-white/70">Dia {w.due_day || '--'}</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {catsStats.length > 0 && (
+                              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 pt-3 border-t border-white/[0.03]">
+                                {catsStats.map((cstat, i) => (
+                                  <div key={i} className="flex items-center gap-1.5">
+                                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cstat.color }} />
+                                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-tight">{cstat.name}</span>
+                                    <span className="text-[9px] font-black text-white/60 tabular-nums">R${cstat.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                ))
               )}
             </div>
 
@@ -442,6 +483,18 @@ const WalletsPage = () => {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ex: Nubank, Itaú..."
                   className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
+                />
+              </div>
+              
+              {/* Institution */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Instituição (Banco)</label>
+                <input
+                  type="text"
+                  value={institutionName}
+                  onChange={(e) => setInstitutionName(e.target.value)}
+                  placeholder="Ex: Nubank, Itaú, Inter..."
+                  className="w-full glass-inner rounded-xl px-4 py-2 text-xs text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
                 />
               </div>
 

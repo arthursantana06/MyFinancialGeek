@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ArrowLeft, Plus, Circle, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Circle, Trash2, Wallet } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCategories } from "@/hooks/useCategories";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
+import { useWallets } from "@/hooks/useWallets";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { toast } from "sonner";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -19,6 +20,7 @@ const SettingsPage = () => {
   const navigate = useNavigate();
   const { categories, isLoading, addCategory } = useCategories();
   const { paymentMethods, isLoading: isLoadingPMs, addPaymentMethod, deletePaymentMethod } = usePaymentMethods();
+  const { wallets } = useWallets();
   const [activeTab, setActiveTab] = useState<"categories" | "payment_methods" | "integrations">("categories");
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -32,6 +34,7 @@ const SettingsPage = () => {
   // Payment method state
   const [pmDrawerOpen, setPmDrawerOpen] = useState(false);
   const [pmName, setPmName] = useState("");
+  const [pmWalletId, setPmWalletId] = useState<string>("");
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
@@ -59,10 +62,12 @@ const SettingsPage = () => {
         name: pmName.trim(),
         icon: "credit-card",
         type: "expense",
+        wallet_id: pmWalletId || null,
       });
       toast.success(t("tx.added"));
       setPmDrawerOpen(false);
       setPmName("");
+      setPmWalletId("");
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -215,17 +220,28 @@ const SettingsPage = () => {
               <>
                 {expenseMethods.length > 0 && (
                   <div className="space-y-1">
-                    {expenseMethods.map((pm) => (
-                      <div key={pm.id} className="flex items-center gap-3 p-3 rounded-2xl glass-inner">
-                        <span className="text-sm font-medium text-foreground flex-1">{pm.name}</span>
-                        <button
-                          onClick={() => deletePaymentMethod.mutate(pm.id)}
-                          className="p-1.5 rounded-lg hover:bg-glass text-muted-foreground hover:text-destructive transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ))}
+                    {expenseMethods.map((pm) => {
+                      const pmWallet = pm.wallet_id ? wallets.find(w => w.id === pm.wallet_id) : null;
+                      return (
+                        <div key={pm.id} className="flex items-center gap-3 p-3 rounded-2xl glass-inner">
+                          <div className="flex-1 flex flex-col">
+                            <span className="text-sm font-medium text-foreground">{pm.name}</span>
+                            {pmWallet && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-medium">
+                                <Wallet size={10} className="text-primary/60" />
+                                {pmWallet.institution_name ? `${pmWallet.institution_name} • ` : ''}{pmWallet.name}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => deletePaymentMethod.mutate(pm.id)}
+                            className="p-1.5 rounded-lg hover:bg-glass text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </>
@@ -326,6 +342,22 @@ const SettingsPage = () => {
                     placeholder="Ex: Cartão Alimentação, Pix Empresa..."
                     className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Vincular a uma Conta/Cartão (Opcional)</label>
+                  <select
+                    value={pmWalletId}
+                    onChange={(e) => setPmWalletId(e.target.value)}
+                    className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all appearance-none"
+                  >
+                    <option value="" className="bg-[#1a1a2e] text-muted-foreground focus:bg-primary">Nenhuma conta vinculada</option>
+                    {wallets.map((w) => (
+                      <option key={w.id} value={w.id} className="bg-[#1a1a2e] text-white">
+                        {w.institution_name ? `${w.institution_name.toUpperCase()} — ` : ''}{w.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <button

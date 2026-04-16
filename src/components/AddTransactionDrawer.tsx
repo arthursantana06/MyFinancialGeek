@@ -249,22 +249,40 @@ const AddTransactionDrawer = ({
 
             {/* Wallet Selection */}
             <div className="space-y-1.5 mt-4">
-              <label className="text-xs text-muted-foreground">Onde?</label>
-              <div className="flex gap-1 flex-wrap">
-                {wallets.map((w) => (
-                  <button
-                    key={w.id}
-                    onClick={() => setSelectedWalletId(w.id)}
-                    className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all flex items-center gap-1.5 ${
-                      selectedWalletId === w.id 
-                      ? (w.type === "credit_card" ? "bg-indigo-500 text-white" : "bg-primary text-white") 
-                      : "glass-inner text-muted-foreground"
-                    }`}
-                  >
-                    {w.type === "credit_card" ? "💳" : "🏦"} {w.name.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+              <label className="text-xs text-muted-foreground">Origem</label>
+              {initialData?.stagedId ? (
+                <div className="flex gap-1 flex-wrap">
+                  {wallets.filter(w => w.id === selectedWalletId).map((w) => (
+                    <div
+                      key={w.id}
+                      className="px-3 py-1.5 rounded-full text-[11px] font-medium bg-white/10 text-white/50 cursor-not-allowed flex items-center gap-1.5"
+                    >
+                      {w.type === "credit_card" ? "💳" : "🏦"} {w.institution_name ? `${w.institution_name.toUpperCase()} • ` : ''}{w.name.toUpperCase()}
+                    </div>
+                  ))}
+                  {!selectedWalletId && (
+                    <div className="px-3 py-1.5 rounded-full text-[11px] font-medium bg-white/10 text-white/50 cursor-not-allowed">
+                      A definir
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex gap-1 flex-wrap">
+                  {wallets.map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => setSelectedWalletId(w.id)}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all flex items-center gap-1.5 ${
+                        selectedWalletId === w.id 
+                        ? (w.type === "credit_card" ? "bg-indigo-500 text-white" : "bg-primary text-white") 
+                        : "glass-inner text-muted-foreground"
+                      }`}
+                    >
+                      {w.type === "credit_card" ? "💳" : "🏦"} {w.name.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Payment method */}

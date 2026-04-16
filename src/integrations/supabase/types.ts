@@ -239,6 +239,7 @@ export type Database = {
           name: string
           type: Database["public"]["Enums"]["category_type"] | null
           user_id: string
+          wallet_id: string | null
         }
         Insert: {
           created_at?: string
@@ -247,6 +248,7 @@ export type Database = {
           name: string
           type?: Database["public"]["Enums"]["category_type"] | null
           user_id: string
+          wallet_id?: string | null
         }
         Update: {
           created_at?: string
@@ -255,8 +257,17 @@ export type Database = {
           name?: string
           type?: Database["public"]["Enums"]["category_type"] | null
           user_id?: string
+          wallet_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "payment_methods_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
+            referencedColumns: ["id"]
+          }
+        ]
       }
       pluggy_connections: {
         Row: {
@@ -491,6 +502,7 @@ export type Database = {
           due_day: number | null
           id: string
           include_in_total: boolean
+          institution_name: string | null
           name: string
           type: Database["public"]["Enums"]["wallet_type"]
           updated_at: string
@@ -505,6 +517,7 @@ export type Database = {
           due_day?: number | null
           id?: string
           include_in_total?: boolean
+          institution_name?: string | null
           name: string
           type: Database["public"]["Enums"]["wallet_type"]
           updated_at?: string
@@ -519,6 +532,7 @@ export type Database = {
           due_day?: number | null
           id?: string
           include_in_total?: boolean
+          institution_name?: string | null
           name?: string
           type?: Database["public"]["Enums"]["wallet_type"]
           updated_at?: string

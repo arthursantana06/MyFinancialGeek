@@ -75,8 +75,10 @@ const TransactionLimbo = () => {
   }, [connections]);
 
   // Filters
-  const [activePeriod, setActivePeriod] = useState<"7d" | "15d" | "30d" | "all" | "custom">("all");
-  const [walletFilter, setWalletFilter] = useState("all");
+  // Filters
+  const [activePeriod, setActivePeriod] = useState<"7d" | "15d" | "30d" | "all" | "custom">("15d"); // Default to 15d maybe, but user had "all"
+  const [activeInstitution, setActiveInstitution] = useState<string>("all");
+  const [activeWalletId, setActiveWalletId] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -100,30 +102,19 @@ const TransactionLimbo = () => {
   // Success animation state
   const [successId, setSuccessId] = useState<string | null>(null);
   const [selectedApprovedTx, setSelectedApprovedTx] = useState<any | null>(null);
-
-  // Unique Institutions derived from data
-  const banks = useMemo(() => {
-    const map = new Map<string, { name: string; itemId: string | null }>();
-    stagedTransactions.forEach((tx) => {
-      const conn = connections?.find((c) => c.pluggy_account_id === tx.pluggy_account_id);
-      if (!conn) return; // Skip "Geral" or unmapped
-      
-      const name = conn.pluggy_account_name || conn.institution_name || "Banco";
-      const id = tx.pluggy_account_id!;
-      if (!map.has(id)) {
-        map.set(id, { name, itemId: conn.pluggy_item_id || null });
-      }
-    });
-
-    const list = Array.from(map.entries()).map(([id, info]) => ({ id, ...info }));
-    return list;
-  }, [stagedTransactions, connections]);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
 
   // Unique wallets present in staged
-  const uniqueWalletIds = useMemo(() => {
+  const uniqueWallets = useMemo(() => {
     const ids = new Set(stagedTransactions.map((t) => t.wallet_id));
     return wallets.filter((w) => ids.has(w.id));
   }, [stagedTransactions, wallets]);
+
+  const institutions = useMemo(() => {
+    const insts = new Set<string>();
+    uniqueWallets.forEach(w => insts.add(w.institution_name || 'Diversos'));
+    return Array.from(insts);
+  }, [uniqueWallets]);
 
   const hasUnlinked = useMemo(
     () => stagedTransactions.some((t) => !t.wallet_id),
@@ -134,15 +125,20 @@ const TransactionLimbo = () => {
   const filtered = useMemo(() => {
     let list = stagedTransactions;
     
-    // Bank (Pluggy) filter
-    if (activePluggyId !== "all") {
-      list = list.filter((t) => t.pluggy_account_id === activePluggyId);
+    // Institution filter
+    if (activeInstitution !== "all") {
+       list = list.filter(t => {
+          const w = wallets.find(w => w.id === t.wallet_id);
+          const inst = w?.institution_name || 'Diversos';
+          return inst === activeInstitution;
+       });
     }
 
-    if (walletFilter === "__none__") {
+    // specific wallet/account filter
+    if (activeWalletId === "__none__") {
       list = list.filter((t) => !t.wallet_id);
-    } else if (walletFilter !== "all") {
-      list = list.filter((t) => t.wallet_id === walletFilter);
+    } else if (activeWalletId !== "all") {
+      list = list.filter((t) => t.wallet_id === activeWalletId);
     }
 
     const now = new Date();
@@ -163,7 +159,28 @@ const TransactionLimbo = () => {
     }
     
     return list;
-  }, [stagedTransactions, walletFilter, activePeriod, dateFrom, dateTo, activePluggyId]);
+  }, [stagedTransactions, wallets, activeInstitution, activeWalletId, activePeriod, dateFrom, dateTo]);
+
+  // Grouped transactions
+  const grouped = useMemo(() => {
+    const groups: Record<string, typeof filtered> = {};
+    filtered.forEach((tx) => {
+      const d = new Date(tx.date);
+      let label = format(d, "dd 'de' MMMM", { locale: ptBR });
+      if (format(d, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd")) {
+        label = "Hoje";
+      } else {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (format(d, "yyyy-MM-dd") === format(yesterday, "yyyy-MM-dd")) {
+          label = "Ontem";
+        }
+      }
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(tx);
+    });
+    return groups;
+  }, [filtered]);
 
   const openDetail = (tx: (typeof stagedTransactions)[number]) => {
     const suggested = findSuggestedCategory(tx.description) ?? tx.suggested_category_id;
@@ -259,20 +276,31 @@ const TransactionLimbo = () => {
             </div>
 
             <button
-              onClick={() => {
-                if (!connections?.length) return;
-                const forceSyncPromise = Promise.all(connections.map((c) => forceSync.mutateAsync(c.pluggy_item_id)));
-                toast.promise(forceSyncPromise, {
-                  loading: "Buscando novas transações...",
-                  success: "Sincronização concluída com sucesso!",
-                  error: "Erro na sincronização"
-                });
+              onClick={async () => {
+                if (!connections?.length || isManualSyncing) return;
+                setIsManualSyncing(true);
+                try {
+                  toast.loading("Buscando novas transações...", { id: "sync-transactions" });
+                  // Avoid Promise.all rejection short-circuiting everything by handling errors per-item
+                  await Promise.all(connections.map(async (c) => {
+                    try {
+                      await forceSync.mutateAsync(c.pluggy_item_id);
+                    } catch (e) {
+                      console.error(`Erro ao sincronizar item ${c.pluggy_item_id}`, e);
+                    }
+                  }));
+                  toast.success("Busca concluída!", { id: "sync-transactions" });
+                } catch (e) {
+                  toast.error("Processo finalizado com avisos", { id: "sync-transactions" });
+                } finally {
+                  setIsManualSyncing(false);
+                }
               }}
-              disabled={forceSync.isPending}
-              className="w-10 h-10 rounded-2xl glass-card border border-indigo-500/20 text-indigo-400 flex items-center justify-center hover:bg-indigo-500/10 transition-all active:scale-90 disabled:opacity-50"
+              disabled={isManualSyncing}
+              className={`w-10 h-10 rounded-2xl glass-card border flex items-center justify-center transition-all active:scale-90 disabled:opacity-50 ${isManualSyncing ? 'border-primary/50 bg-primary/10 text-primary' : 'border-indigo-500/20 text-indigo-400 hover:bg-indigo-500/10'}`}
               title="Buscar novas transações"
             >
-              {forceSync.isPending ? (
+              {isManualSyncing ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
                 <RefreshCw size={18} />
@@ -410,66 +438,78 @@ const TransactionLimbo = () => {
           </div>
         )}
 
-        {/* Liquid Filter Bar */}
-        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 py-1">
-           <button 
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 ${showFilters ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'glass-card text-muted-foreground'}`}
-          >
-            <Calendar size={14} />
-            Período
-          </button>
-          
-          <div className="h-4 w-[1px] bg-white/10 shrink-0" />
-          
-          <button
-            onClick={() => setWalletFilter("all")}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 ${walletFilter === "all" ? 'bg-white text-black' : 'glass-inner text-muted-foreground'}`}
-          >
-            Todas Carteiras
-          </button>
-          
-          {hasUnlinked && (
-            <button
-              onClick={() => setWalletFilter("__none__")}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 flex items-center gap-2 ${walletFilter === "__none__" ? 'bg-white text-black' : 'glass-inner text-muted-foreground'}`}
+        {/* Hierarchical Filter Bar */}
+        <div className="space-y-4">
+          {/* Level 1: Banks */}
+          <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 py-1">
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${showFilters ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'glass-card text-muted-foreground'}`}
             >
-              <div className="w-2 h-2 rounded-full bg-slate-500" />
-              Externas
+              <Calendar size={14} />
+              Período
             </button>
-          )}
-
-          {uniqueWalletIds.map((w) => (
+            
+            <div className="h-4 w-[1px] bg-white/10 shrink-0" />
+            
             <button
-              key={w.id}
-              onClick={() => setWalletFilter(w.id)}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 flex items-center gap-2 ${walletFilter === w.id ? 'bg-chart-green text-white' : 'glass-inner text-muted-foreground'}`}
+              onClick={() => {
+                setActiveInstitution("all");
+                setActiveWalletId("all");
+              }}
+              className={`px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${activeInstitution === "all" ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'glass-inner text-muted-foreground hover:bg-white/5'}`}
             >
-              <div className="w-2 h-2 rounded-full shadow-sm" style={{ backgroundColor: w.color }} />
-              {w.name}
+              Todos os Bancos
             </button>
-          ))}
-
-          {banks.length > 0 && (
-            <>
-              <div className="h-4 w-[1px] bg-white/10 shrink-0 mx-1" />
+            
+            {institutions.map((inst) => (
               <button
-                onClick={() => setActivePluggyId("all")}
-                className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 ${activePluggyId === "all" ? 'bg-indigo-500 text-white' : 'glass-inner text-muted-foreground'}`}
+                key={inst}
+                onClick={() => {
+                  setActiveInstitution(inst);
+                  setActiveWalletId("all");
+                }}
+                className={`px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 flex items-center gap-2 ${activeInstitution === inst && activeWalletId !== "__none__" ? 'bg-white text-black shadow-lg shadow-white/20' : 'glass-inner text-muted-foreground hover:bg-white/5'}`}
               >
-                Todos Bancos
+                <Banknote size={14} />
+                {inst}
               </button>
-              {banks.map((bank) => (
+            ))}
+
+            {hasUnlinked && (
+              <button
+                onClick={() => {
+                  setActiveInstitution("all");
+                  setActiveWalletId("__none__");
+                }}
+                className={`px-4 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 flex items-center gap-2 ${activeWalletId === "__none__" ? 'bg-slate-700 text-white' : 'glass-inner text-muted-foreground hover:bg-white/5'}`}
+              >
+                <div className="w-2 h-2 rounded-full bg-slate-400" />
+                Sem Banco
+              </button>
+            )}
+          </div>
+
+          {/* Level 2: Accounts within bank */}
+          {activeInstitution !== "all" && activeWalletId !== "__none__" && (
+            <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar -mx-4 px-4 pb-1 animate-in fade-in slide-in-from-top-2">
+              <button
+                onClick={() => setActiveWalletId("all")}
+                className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-tighter transition-all shrink-0 ${activeWalletId === "all" ? 'bg-chart-green text-white shadow-md' : 'bg-white/5 text-muted-foreground/60 hover:bg-white/10'}`}
+              >
+                Todas as Contas
+              </button>
+              {uniqueWallets.filter(w => (w.institution_name || 'Diversos') === activeInstitution).map(w => (
                 <button
-                  key={bank.id}
-                  onClick={() => setActivePluggyId(bank.id)}
-                  className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 flex items-center gap-2 ${activePluggyId === bank.id ? 'bg-indigo-500 text-white' : 'glass-inner text-muted-foreground'}`}
+                  key={w.id}
+                  onClick={() => setActiveWalletId(w.id)}
+                  className={`px-3 py-1.5 rounded-xl text-[9px] font-black tracking-tighter transition-all shrink-0 flex items-center gap-1.5 uppercase ${activeWalletId === w.id ? 'bg-chart-green text-white shadow-md' : 'bg-white/5 text-muted-foreground/60 hover:bg-white/10'}`}
                 >
-                  <Banknote size={12} />
-                  {bank.name}
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: w.color }} />
+                  {w.name}
                 </button>
               ))}
-            </>
+            </div>
           )}
         </div>
 
@@ -544,89 +584,104 @@ const TransactionLimbo = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {filtered.map((tx, idx) => {
-              const isSuccess = successId === tx.id;
-              const suggested = (isSuccess || tx.status === 'approved') ? tx.suggested_category_id : (findSuggestedCategory(tx.description) ?? tx.suggested_category_id);
-              const suggestedCat = getCategory(suggested);
-              const wColor = walletColor(tx.wallet_id);
+          <div className="space-y-8">
+            {Object.entries(grouped).map(([label, groupItems]) => (
+              <div key={label} className="space-y-4">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] px-1 opacity-70">
+                  {label}
+                </p>
+                <div className="grid grid-cols-1 gap-4">
+                  {groupItems.map((tx, idx) => {
+                    const isSuccess = successId === tx.id;
+                    const suggested = (isSuccess || tx.status === 'approved') ? tx.suggested_category_id : (findSuggestedCategory(tx.description) ?? tx.suggested_category_id);
+                    const suggestedCat = getCategory(suggested);
+                    const wColor = walletColor(tx.wallet_id);
 
-              if (isSuccess || tx.status === 'approved') {
-                const isPositive = tx.type === "income";
-                return (
-                  <button
-                    key={tx.id}
-                    onClick={() => setSelectedApprovedTx(tx)}
-                    style={{ animationDelay: `${idx * 40}ms`, position: 'relative', overflow: 'hidden' }}
-                    className="w-full text-left flex items-center gap-3 p-3 rounded-2xl transition-colors animate-in fade-in duration-500 bg-glass hover:bg-white/5 mt-2"
-                  >
-                    {isSuccess && (
-                       <div className="absolute inset-0 flex items-center justify-center z-10 animate-in fade-in duration-300 backdrop-blur-[2px] bg-chart-green/10 rounded-2xl">
-                          <div className="w-10 h-10 rounded-full bg-chart-green flex items-center justify-center shadow-lg shadow-chart-green/40">
-                            <Check size={20} className="text-white" />
+                    if (isSuccess || tx.status === 'approved') {
+                      const isPositive = tx.type === "income";
+                      return (
+                        <button
+                          key={tx.id}
+                          onClick={() => setSelectedApprovedTx(tx)}
+                          style={{ animationDelay: `${idx * 40}ms`, position: 'relative' }}
+                          className="w-full text-left flex items-center gap-4 p-4 rounded-2xl transition-all animate-in fade-in duration-500 bg-glass/40 border border-white/[0.03] hover:bg-white/5 hover:-translate-y-0.5"
+                        >
+                          {isSuccess && (
+                            <div className="absolute inset-0 flex items-center justify-center z-10 animate-in fade-in duration-300 backdrop-blur-[2px] bg-chart-green/10 rounded-2xl">
+                              <div className="w-10 h-10 rounded-full bg-chart-green flex items-center justify-center shadow-lg shadow-chart-green/40">
+                                <Check size={20} className="text-white" />
+                              </div>
+                            </div>
+                          )}
+                          <div
+                            className="w-11 h-11 rounded-xl bg-glass border flex items-center justify-center flex-shrink-0"
+                            style={suggestedCat ? { borderColor: suggestedCat.color + "40", backgroundColor: suggestedCat.color + "10" } : { borderColor: 'rgba(255,255,255,0.05)' }}
+                          >
+                            {suggestedCat?.icon_emoji ? (
+                              <span className="text-2xl">{suggestedCat.icon_emoji}</span>
+                            ) : (
+                              <Sparkles size={18} className="text-muted-foreground" strokeWidth={1.5} />
+                            )}
                           </div>
-                       </div>
-                    )}
-                    <div
-                      className="w-10 h-10 rounded-xl bg-glass border border-glass flex items-center justify-center flex-shrink-0"
-                      style={suggestedCat ? { borderColor: suggestedCat.color + "30" } : {}}
-                    >
-                      {suggestedCat?.icon_emoji ? (
-                        <span className="text-xl">{suggestedCat.icon_emoji}</span>
-                      ) : (
-                        <Sparkles size={18} className="text-muted-foreground" strokeWidth={1.5} />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
-                      <p className="text-xs text-muted-foreground">{suggestedCat?.name || walletName(tx.wallet_id)}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className={`text-sm font-semibold tabular-nums tracking-tight ${isPositive ? "text-chart-green" : "text-foreground"}`}>
-                        {isPositive ? "+" : "-"}R${Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </p>
-                    </div>
-                  </button>
-                );
-              }
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-white truncate leading-tight mb-0.5">{tx.description}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded flex items-center gap-1 border border-white/5">
+                                <Landmark size={10} className="text-primary/70" />
+                                {wallets.find(w => w.id === tx.wallet_id)?.institution_name || 'Banco'}
+                              </span>
+                              <span className="text-white/20 text-[10px]">•</span>
+                              <span className="text-[10px] font-bold text-muted-foreground truncate uppercase tracking-[0.05em]">
+                                {walletName(tx.wallet_id)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className={`text-base font-black tabular-nums tracking-tight ${isPositive ? "text-chart-green" : "text-white"}`}>
+                              {isPositive ? "+" : "-"}&nbsp;R${Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    }
 
-              return (
-                <button
-                  key={tx.id}
-                  onClick={() => openDetail(tx)}
-                  style={{ animationDelay: `${idx * 40}ms` }}
-                  className={`group relative glass-card p-5 text-left transition-all hover:translate-y-[-2px] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden 
-                    ${tx.status === 'rejected' ? 'opacity-40' : 'hover:bg-white/5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]'}`}
-                >
-                  {/* Subtle edge glow based on wallet */}
-                  <div className={`absolute top-0 left-0 w-[2px] h-full ${tx.status === 'rejected' ? 'opacity-20' : 'opacity-40'}`} style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
-                  
-                  <div className="flex items-center gap-4">
-                    {/* Wallet Icon with specific glow */}
-                    <div 
-                      className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden ${tx.status === 'rejected' ? 'bg-slate-500/10' : ''}`}
-                      style={tx.status !== 'rejected' ? { backgroundColor: `${wColor}15` } : {}}
-                    >
-                       <div className="absolute inset-0 opacity-20 blur-sm" style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
-                       <Wallet size={20} className="relative z-10" style={{ color: tx.status === 'rejected' ? '#64748b' : wColor }} />
-                    </div>
+                    return (
+                      <button
+                        key={tx.id}
+                        onClick={() => openDetail(tx)}
+                        style={{ animationDelay: `${idx * 40}ms` }}
+                        className={`group relative glass-card p-5 text-left transition-all hover:translate-y-[-2px] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden 
+                          ${tx.status === 'rejected' ? 'opacity-40' : 'hover:bg-white/5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]'}`}
+                      >
+                        {/* Subtle edge glow based on wallet */}
+                        <div className={`absolute top-0 left-0 w-[2px] h-full ${tx.status === 'rejected' ? 'opacity-20' : 'opacity-40'}`} style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
+                        
+                        <div className="flex items-center gap-4">
+                          {/* Wallet Icon with specific glow */}
+                          <div 
+                            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden ${tx.status === 'rejected' ? 'bg-slate-500/10' : ''}`}
+                            style={tx.status !== 'rejected' ? { backgroundColor: `${wColor}15` } : {}}
+                          >
+                             <div className="absolute inset-0 opacity-20 blur-sm" style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
+                             <Wallet size={20} className="relative z-10" style={{ color: tx.status === 'rejected' ? '#64748b' : wColor }} />
+                          </div>
 
-                    <div className="flex-1 min-w-0 space-y-1">
-                       <div className="flex items-center justify-between gap-2">
-                          <p className={`text-sm font-bold truncate leading-none ${tx.status === 'rejected' ? 'text-white/40 line-through' : 'text-white/90'}`}>
-                            {tx.description}
-                          </p>
-                          <span className={`text-base font-black tabular-nums shrink-0 ${tx.status === 'rejected' ? 'text-white/40 line-through' : tx.type === 'income' ? 'text-chart-green' : 'text-white'}`}>
-                            {tx.type === 'income' ? '+\u00a0' : '-\u00a0'}
-                            {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </span>
-                       </div>
-                       
-                       <div className="flex items-center gap-2">
-                          <span className="text-[11px] font-semibold text-muted-foreground/80 flex items-center gap-1">
-                            {format(new Date(tx.date), "dd MMM")}
-                          </span>
-                          <span className="text-white/10 text-[10px]">•</span>
+                          <div className="flex-1 min-w-0 space-y-1">
+                             <div className="flex items-center justify-between gap-2">
+                                <p className={`text-sm font-bold truncate leading-none ${tx.status === 'rejected' ? 'text-white/40 line-through' : 'text-white/90'}`}>
+                                  {tx.description}
+                                </p>
+                                <span className={`text-base font-black tabular-nums shrink-0 ${tx.status === 'rejected' ? 'text-white/40 line-through' : tx.type === 'income' ? 'text-chart-green' : 'text-white'}`}>
+                                  {tx.type === 'income' ? '+\u00a0' : '-\u00a0'}
+                                  {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </span>
+                             </div>
+                             
+                             <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-semibold text-muted-foreground/80 flex items-center gap-1 uppercase tracking-wider">
+                                  {walletName(tx.wallet_id)}
+                                </span>
+                                <span className="text-white/10 text-[10px]">•</span>
                           <span className="text-[11px] font-medium text-muted-foreground truncate uppercase tracking-tight">
                             {walletName(tx.wallet_id)}
                           </span>
@@ -688,51 +743,62 @@ const TransactionLimbo = () => {
       <Drawer open={!!selectedApprovedTx} onOpenChange={(open) => !open && setSelectedApprovedTx(null)}>
         {selectedApprovedTx && (
           <DrawerContent className="bg-background border-t border-glass-border">
-            <div className="mx-auto w-full max-w-sm px-4 pb-8">
-              <DrawerHeader className="px-0">
-                <DrawerTitle className="text-foreground">Detalhes da Transação</DrawerTitle>
+            <div className="mx-auto w-full max-w-sm px-4 pb-12">
+              <DrawerHeader className="px-0 pb-6">
+                <DrawerTitle className="text-foreground text-center">Detalhes da Transação</DrawerTitle>
               </DrawerHeader>
-              <div className="space-y-4 pt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Valor</span>
-                  <span className={`text-xl font-bold ${selectedApprovedTx.type === 'income' ? 'text-chart-green' : 'text-foreground'}`}>
+              <div className="space-y-6">
+                <div className="flex flex-col items-center gap-2 py-4">
+                  <div 
+                    className="w-16 h-16 rounded-[2rem] bg-glass border flex items-center justify-center mb-2"
+                    style={{ borderColor: getCategory(selectedApprovedTx.suggested_category_id)?.color + "40", backgroundColor: getCategory(selectedApprovedTx.suggested_category_id)?.color + "10" }}
+                  >
+                    {getCategory(selectedApprovedTx.suggested_category_id)?.icon_emoji ? (
+                      <span className="text-4xl">{getCategory(selectedApprovedTx.suggested_category_id)?.icon_emoji}</span>
+                    ) : (
+                      <Sparkles size={28} className="text-primary" />
+                    )}
+                  </div>
+                  <span className={`text-3xl font-black tabular-nums ${selectedApprovedTx.type === 'income' ? 'text-chart-green' : 'text-white'}`}>
                     {selectedApprovedTx.type === 'income' ? '+' : '-'}R${Number(selectedApprovedTx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </span>
+                  <p className="text-sm font-medium text-white/60">{selectedApprovedTx.description}</p>
                 </div>
 
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Descrição</span>
-                  <span className="text-sm font-medium text-foreground truncate max-w-[200px] text-right">{selectedApprovedTx.description}</span>
-                </div>
+                <div className="space-y-3 px-2">
+                  <div className="flex justify-between items-center py-3 border-b border-white/[0.03]">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Data</span>
+                    <span className="text-sm font-semibold text-white/90">
+                      {format(new Date(selectedApprovedTx.date), "dd 'de' MMMM, yyyy", { locale: ptBR })}
+                    </span>
+                  </div>
 
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Data</span>
-                  <span className="text-sm font-medium text-foreground">
-                    {format(new Date(selectedApprovedTx.date), "dd 'de' MMMM, yyyy", { locale: ptBR })}
-                  </span>
-                </div>
+                  <div className="flex justify-between items-center py-3 border-b border-white/[0.03]">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Categoria</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-white/90">{getCategory(selectedApprovedTx.suggested_category_id)?.name || "Sem categoria"}</span>
+                    </div>
+                  </div>
 
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Categoria</span>
-                  <div className="flex items-center gap-2">
-                    {getCategory(selectedApprovedTx.suggested_category_id)?.icon_emoji && <span>{getCategory(selectedApprovedTx.suggested_category_id)?.icon_emoji}</span>}
-                    <span className="text-sm font-medium text-foreground">{getCategory(selectedApprovedTx.suggested_category_id)?.name || "-"}</span>
+                  <div className="flex justify-between items-center py-3 border-b border-white/[0.03]">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Origem</span>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-primary leading-none mb-1">
+                        {connections?.find(c => c.pluggy_account_id === selectedApprovedTx.pluggy_account_id)?.institution_name?.toUpperCase() || "MANUAL"}
+                      </p>
+                      <p className="text-[10px] font-medium text-white/40 uppercase tracking-tighter">
+                        {walletName(selectedApprovedTx.wallet_id)}
+                      </p>
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Origem</span>
-                  <span className="text-sm font-medium text-foreground">
-                    {connections?.find(c => c.pluggy_account_id === selectedApprovedTx.pluggy_account_id)?.institution_name || walletName(selectedApprovedTx.wallet_id) || "Desconhecida"}
-                  </span>
-                </div>
                 
-                <div className="pt-6">
+                <div className="pt-4">
                    <button
                      onClick={() => setSelectedApprovedTx(null)}
-                     className="w-full py-3 rounded-xl bg-glass-inner text-foreground font-semibold text-sm transition-all active:scale-[0.98]"
+                     className="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold text-sm transition-all active:scale-[0.98] hover:bg-white/10"
                    >
-                     Fechar
+                     Entendido
                    </button>
                 </div>
               </div>
