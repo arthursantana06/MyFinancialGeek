@@ -31,9 +31,9 @@ interface Props {
   onCreateRule?: (description: string, categoryId: string) => void;
 }
 
-const AddTransactionDrawer = ({ 
-  open, 
-  onOpenChange, 
+const AddTransactionDrawer = ({
+  open,
+  onOpenChange,
   initialData,
   onIgnore,
   onDelete,
@@ -54,8 +54,7 @@ const AddTransactionDrawer = ({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [selectedWalletId, setSelectedWalletId] = useState<string>("");
-  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>("");
+  const [selectedUnifiedId, setSelectedUnifiedId] = useState<string>("");
 
   const getLocalDateString = () => {
     const d = new Date();
@@ -74,8 +73,9 @@ const AddTransactionDrawer = ({
       setAmount(initialData.amount || "");
       setDescription(initialData.description || "");
       setCategoryId(initialData.categoryId || "");
-      setSelectedWalletId(initialData.walletId || "");
-      setSelectedPaymentMethodId(initialData.paymentMethodId || "");
+      if (initialData.walletId || initialData.paymentMethodId) {
+        setSelectedUnifiedId(initialData.walletId || initialData.paymentMethodId || "");
+      }
       if (initialData.date) {
         setDate(initialData.date.split("T")[0]);
       }
@@ -89,31 +89,51 @@ const AddTransactionDrawer = ({
       setAmount(initialData.amount || "");
       setDescription(initialData.description || "");
       setCategoryId(initialData.categoryId || "");
-      setSelectedWalletId(initialData.walletId || "");
-      setSelectedPaymentMethodId(initialData.paymentMethodId || "");
+      if (initialData.walletId || initialData.paymentMethodId) {
+        setSelectedUnifiedId(initialData.walletId || initialData.paymentMethodId || "");
+      }
       if (initialData.date) {
         setDate(initialData.date.split("T")[0]);
       }
     }
   }, [initialData, open]);
 
-  // Force expense type for Credit Cards
   useEffect(() => {
-    const wallet = wallets.find(w => w.id === selectedWalletId);
+    const wallet = wallets.find(w => w.id === selectedUnifiedId);
     if (wallet?.type === "credit_card") {
       setType("expense");
     }
-  }, [selectedWalletId, wallets]);
+  }, [selectedUnifiedId, wallets]);
 
   const isCreditCard = useMemo(() => {
-    const wallet = wallets.find(w => w.id === selectedWalletId);
+    const wallet = wallets.find(w => w.id === selectedUnifiedId);
     return wallet?.type === "credit_card";
-  }, [selectedWalletId, wallets]);
+  }, [selectedUnifiedId, wallets]);
 
   const handleSubmit = async () => {
-    if (!amount || !description || !selectedWalletId) {
+    if (!amount || !description || !selectedUnifiedId) {
       toast.error(t("tx.fillRequired"));
       return;
+    }
+
+    let submitWalletId = "";
+    let submitPaymentMethodId: string | null = null;
+
+    const selectedWallet = wallets.find(w => w.id === selectedUnifiedId);
+    if (selectedWallet) {
+      submitWalletId = selectedWallet.id;
+    } else {
+      const selectedPM = paymentMethods.find(m => m.id === selectedUnifiedId);
+      if (selectedPM) {
+        submitPaymentMethodId = selectedPM.id;
+        // Default wallet fallback to avoid DB error for manual methods
+        submitWalletId = wallets.find(w => w.type === 'checking')?.id || wallets[0]?.id || "";
+      }
+    }
+
+    if (!submitWalletId) {
+       toast.error("Nenhuma conta base encontrada no sistema.");
+       return;
     }
 
     // Fix timezone shift by creating date at local noon
@@ -125,9 +145,9 @@ const AddTransactionDrawer = ({
         amount: parseFloat(amount.replace(",", ".")),
         type,
         description,
-        wallet_id: selectedWalletId,
+        wallet_id: submitWalletId,
         category_id: categoryId || undefined,
-        payment_method_id: selectedPaymentMethodId || null,
+        payment_method_id: submitPaymentMethodId || null,
         status: "paid",
         date: safeDate.toISOString(),
       });
@@ -138,7 +158,7 @@ const AddTransactionDrawer = ({
         await supabase.from("staged_transactions").update({
           status: "approved",
           suggested_category_id: categoryId || null,
-          wallet_id: selectedWalletId,
+          wallet_id: submitWalletId,
           type,
           updated_at: new Date().toISOString()
         }).eq("id", initialData.stagedId);
@@ -147,13 +167,12 @@ const AddTransactionDrawer = ({
 
       toast.success(t("tx.added"));
       onOpenChange(false);
-      
+
       // Reset after success
       if (!initialData) {
         setAmount("");
         setDescription("");
-        setSelectedWalletId("");
-        setSelectedPaymentMethodId("");
+        setSelectedUnifiedId("");
         setCategoryId("");
       }
     } catch (err: any) {
@@ -247,71 +266,57 @@ const AddTransactionDrawer = ({
               </div>
             )}
 
-            {/* Wallet Selection */}
-            <div className="space-y-1.5 mt-4">
-              <label className="text-xs text-muted-foreground">Origem</label>
+            {/* Unified Payment Selection */}
+            <div className="space-y-1.5 mt-2">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">{t("tx.paymentMethod")}</label>
               {initialData?.stagedId ? (
-                <div className="flex gap-1 flex-wrap">
-                  {wallets.filter(w => w.id === selectedWalletId).map((w) => (
+                <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar -mx-4 px-4">
+                  {wallets.filter(w => w.id === selectedUnifiedId).map((w) => (
                     <div
                       key={w.id}
-                      className="px-3 py-1.5 rounded-full text-[11px] font-medium bg-white/10 text-white/50 cursor-not-allowed flex items-center gap-1.5"
+                      className="px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white/5 text-white/20 border border-white/5 shrink-0 flex items-center gap-2"
                     >
-                      {w.type === "credit_card" ? "💳" : "🏦"} {w.institution_name ? `${w.institution_name.toUpperCase()} • ` : ''}{w.name.toUpperCase()}
+                      {w.type === "credit_card" ? "💳" : "🏦"} {w.name}
                     </div>
                   ))}
-                  {!selectedWalletId && (
-                    <div className="px-3 py-1.5 rounded-full text-[11px] font-medium bg-white/10 text-white/50 cursor-not-allowed">
-                      A definir
+                  {!wallets.some(w => w.id === selectedUnifiedId) && paymentMethods.filter(m => m.id === selectedUnifiedId).map(m => (
+                    <div
+                       key={m.id}
+                      className="px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-white/5 text-white/20 border border-white/5 shrink-0 flex items-center gap-2"
+                    >
+                      {m.name}
                     </div>
-                  )}
+                  ))}
                 </div>
               ) : (
-                <div className="flex gap-1 flex-wrap">
+                <div className="flex gap-2 overflow-x-auto pb-2 hide-scrollbar -mx-4 px-4">
                   {wallets.map((w) => (
                     <button
                       key={w.id}
-                      onClick={() => setSelectedWalletId(w.id)}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all flex items-center gap-1.5 ${
-                        selectedWalletId === w.id 
-                        ? (w.type === "credit_card" ? "bg-indigo-500 text-white" : "bg-primary text-white") 
-                        : "glass-inner text-muted-foreground"
-                      }`}
+                      onClick={() => setSelectedUnifiedId(w.id)}
+                      className={`px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shrink-0 flex items-center gap-2 border ${selectedUnifiedId === w.id
+                          ? (w.type === "credit_card" ? "bg-indigo-500 text-white border-indigo-400 shadow-[0_0_15px_rgba(99,102,241,0.3)]" : "bg-primary text-white border-primary shadow-[0_0_15px_rgba(59,130,246,0.3)]")
+                          : "glass-inner border-transparent text-muted-foreground hover:text-white"
+                        }`}
                     >
-                      {w.type === "credit_card" ? "💳" : "🏦"} {w.institution_name ? `${w.institution_name.toUpperCase()} • ` : ''}{w.name.toUpperCase()}
+                      {w.type === "credit_card" ? "💳" : "🏦"} {w.name}
+                    </button>
+                  ))}
+                  {paymentMethods.filter(m => !m.type || m.type === type).map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => setSelectedUnifiedId(m.id)}
+                      className={`px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all shrink-0 border ${selectedUnifiedId === m.id 
+                          ? "bg-white text-black border-white shadow-xl" 
+                          : "glass-inner border-transparent text-muted-foreground hover:text-white"
+                        }`}
+                    >
+                      {m.name}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-
-            {/* Payment method */}
-            {type === "expense" && selectedWalletId && (
-              <div className="space-y-1.5 mt-4">
-                <label className="text-xs text-muted-foreground">{t("tx.paymentMethod")}</label>
-                <div className="flex gap-1 flex-wrap">
-                  <button
-                    onClick={() => setSelectedPaymentMethodId("")}
-                    className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
-                      !selectedPaymentMethodId ? "pill-active" : "glass-inner text-muted-foreground"
-                    }`}
-                  >
-                    PADRÃO
-                  </button>
-                  {paymentMethods.filter(m => m.type === "expense").map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setSelectedPaymentMethodId(m.id)}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
-                        selectedPaymentMethodId === m.id ? "pill-active" : "glass-inner text-muted-foreground"
-                      }`}
-                    >
-                      {m.name.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Discrete Contextual Actions for Staged Transactions */}
             {initialData?.stagedId && (

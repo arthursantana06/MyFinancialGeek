@@ -40,6 +40,34 @@ Deno.serve(async (req) => {
     const data = await res.json();
     const accounts = data.results || [];
 
+    // --- NEW LOGIC: Manage Banks Table ---
+    // 1. Check if bank exists for this institution and user
+    let bankId: string | null = null;
+    const { data: existingBank } = await supabase
+      .from('banks')
+      .select('id')
+      .eq('name', institutionName)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingBank) {
+      bankId = existingBank.id;
+    } else {
+      // Create the bank automatically
+      const { data: newBank, error: bankErr } = await supabase
+        .from('banks')
+        .insert({
+          name: institutionName,
+          user_id: userId,
+          color: accounts[0]?.type === 'CREDIT' ? '#8b5cf6' : '#3b82f6' // Default logic
+        })
+        .select('id')
+        .single();
+      
+      if (bankErr) console.error('[SYNC-ACCOUNTS] Bank creation error:', bankErr.message);
+      else bankId = newBank.id;
+    }
+
     const stats = { created: 0, updated: 0 };
 
     for (const account of accounts) {
@@ -74,6 +102,7 @@ Deno.serve(async (req) => {
       if (walletId) {
         // Update existing wallet
         await supabase.from('wallets').update({
+          bank_id: bankId, // Ensure it is linked to the bank
           credit_limit: credit_limit ?? undefined,
           closing_day: closing_day ?? undefined,
           due_day: due_day ?? undefined,
@@ -91,6 +120,7 @@ Deno.serve(async (req) => {
         // Create new wallet
         const { data: newWallet, error: walletErr } = await supabase.from('wallets').insert({
           user_id: userId,
+          bank_id: bankId,
           name: account.name || 'Nova Conta',
           type,
           color: account.type === 'CREDIT' ? '#8b5cf6' : '#3b82f6',

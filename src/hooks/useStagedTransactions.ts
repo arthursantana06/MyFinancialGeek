@@ -143,6 +143,19 @@ export const useStagedTransactions = () => {
     },
   });
 
+  const syncNew = useMutation({
+    mutationFn: async (itemId: string) => {
+      const { data, error } = await supabase.functions.invoke("pluggy-sync-transactions", {
+        body: { itemId, userId: user!.id, force: false },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
+    },
+  });
+
   return {
     stagedTransactions: query.data ?? [],
     isLoading: query.isLoading,
@@ -152,5 +165,6 @@ export const useStagedTransactions = () => {
     rejectAllPending,
     resetRejectedTransactions,
     forceSync,
+    syncNew,
   };
 };

@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -36,7 +36,6 @@ async function fetchTransactions(apiKey: string, accountId: string, fromDate?: s
     if (fromDate) url += `&from=${fromDate}`;
     if (toDate) url += `&to=${toDate}`;
     
-    console.log(`[SYNC] Fetching page ${page}: ${url}`);
     const res = await fetch(url, { headers: { 'X-API-KEY': apiKey } });
     if (!res.ok) throw new Error(`Failed to fetch transactions page ${page}: ${await res.text()}`);
     
@@ -61,9 +60,7 @@ Deno.serve(async (req) => {
     const { itemId, userId, fromDate, force } = await req.json();
     if (!itemId || !userId) throw new Error('itemId and userId are required');
 
-    console.log(`[SYNC] Request: item=${itemId}, force=${force}`);
-
-    // Check if item exists in our records to avoid sync of deleted items
+    // Check if item exists
     const { data: itemConnections, error: connError } = await supabase
       .from('pluggy_connections')
       .select('id, pluggy_account_id, wallet_id')
@@ -71,27 +68,19 @@ Deno.serve(async (req) => {
       .eq('user_id', userId);
 
     if (connError || !itemConnections || itemConnections.length === 0) {
-      console.log(`[SYNC] Item ${itemId} not found in pluggy_connections. Skipping.`);
-      return new Response(
-        JSON.stringify({ success: true, message: 'Item not mapped. Sync skipped.' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ success: true, message: 'Item not mapped.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const activeAcountIds = itemConnections.map(c => c.pluggy_account_id);
 
-    // FORCE MODE: Delete existing staged transactions for this item before refetching
+    // FORCE MODE: Clear pending staged transactions
     if (force === true) {
-      console.log(`[SYNC] FORCE MODE ACTIVE: Deleting existing staged transactions for accounts: ${activeAcountIds.join(', ')}`);
-      
-      const { error: delError } = await supabase
+      await supabase
         .from('staged_transactions')
         .delete()
         .eq('user_id', userId)
+        .eq('status', 'pending')
         .in('pluggy_account_id', activeAcountIds);
-      
-      if (delError) console.error(`[SYNC] Error clearing staged transactions: ${delError.message}`);
-      else console.log(`[SYNC] Cleared staged transactions for ${activeAcountIds.length} accounts`);
     }
 
     const from = fromDate || (() => {
@@ -100,11 +89,9 @@ Deno.serve(async (req) => {
       return d.toISOString().split('T')[0];
     })();
 
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const to = tomorrow.toISOString().split('T')[0];
+    const to = new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0];
 
-    // Fetch automation rules for this user
+    // Fetch automation rules
     const { data: rules } = await supabase
       .from('automation_rules')
       .select('*')
@@ -119,13 +106,10 @@ Deno.serve(async (req) => {
 
     for (const account of accounts) {
       const accountId = account.id;
+      const accountType = account.type; // 'CHECKING', 'CREDIT', etc.
 
-      // Ensure we only sync accounts that are still in our pluggy_connections
       const connectionMapping = itemConnections.find(c => c.pluggy_account_id === accountId);
-      if (!connectionMapping) {
-        console.log(`[SYNC] Account ${accountId} is not mapped in pluggy_connections. Skipping this account.`);
-        continue;
-      }
+      if (!connectionMapping) continue;
 
       const walletId = connectionMapping.wallet_id || null;
       const transactions = await fetchTransactions(apiKey, accountId, from, to);
@@ -134,36 +118,43 @@ Deno.serve(async (req) => {
         const pluggyTxId = tx.id;
         const description = tx.description || tx.descriptionRaw || 'Sem descrição';
         const amount = Math.abs(tx.amount);
-        const type = tx.amount >= 0 ? 'income' : 'expense';
         
-        // Skip if exists in staged OR real transactions
+        // --- NEW LOGIC: Correct Classification ---
+        // For CREDIT accounts, Pluggy often returns purchases (expenses) as POSITIVE values.
+        // For CHECKING accounts, expenses are usually NEGATIVE.
+        // So we normalize:
+        let type: 'income' | 'expense' = 'expense';
+        if (accountType === 'CREDIT') {
+          // If Credit Card: Usually Positive = Purchase (Expense), Negative = Payment/Refund (Income)
+          type = tx.amount >= 0 ? 'expense' : 'income';
+        } else {
+          // If Checking: Usual Negative = Money Out (Expense), Positive = Money In (Income)
+          type = tx.amount >= 0 ? 'income' : 'expense';
+        }
+
+        // Special case: If description contains "Estorno" or "Devolução", it's likely income
+        if (description.toLowerCase().includes('estorno') || description.toLowerCase().includes('devolução')) {
+          type = 'income';
+        }
+
+        // Skip if exists
         const { data: existingStaged } = await supabase
           .from('staged_transactions')
           .select('id, status, wallet_id')
           .eq('pluggy_transaction_id', pluggyTxId)
           .maybeSingle();
-
-        // Also check if already consolidated in real transactions to avoid duplicates
-        // Note: We might want a dedicated column for pluggy_id in transactions for better consistency
-        // but for now we skip if it exists in staged.
         
         if (existingStaged) {
-          // If it exists but not confirmed, update the mapping if it changed
-          if (existingStaged.status !== 'confirmed' && existingStaged.wallet_id !== walletId) {
-            await supabase
-              .from('staged_transactions')
-              .update({ wallet_id: walletId })
-              .eq('id', existingStaged.id);
+          if (existingStaged.status !== 'approved' && existingStaged.wallet_id !== walletId) {
+            await supabase.from('staged_transactions').update({ wallet_id: walletId }).eq('id', existingStaged.id);
           }
           totalSkipped++; 
           continue; 
         }
 
-        // Apply Automation Rules (Exact Match)
         const matchingRule = rules?.find(r => r.keyword?.toLowerCase() === description.toLowerCase());
         
         if (matchingRule?.rule_type === 'auto_approve' && matchingRule.category_id && walletId) {
-          console.log(`[SYNC] AUTO-APPROVING: ${description}`);
           const { error: insertErr } = await supabase.from('transactions').insert({
             user_id: userId,
             description,
@@ -173,15 +164,10 @@ Deno.serve(async (req) => {
             category_id: matchingRule.category_id,
             wallet_id: walletId,
             status: 'paid',
-            // If they also mapped a payment method in the auto-approve rule
             payment_method_id: matchingRule.payment_method_id || null
           });
           
-          if (insertErr) {
-             console.error(`[SYNC] Auto-approve error: ${insertErr.message}`);
-             // Fallback to staged if auto-approve fails
-          } else {
-             // Create a "confirmed" record in staged to keep track that we synced this ID
+          if (!insertErr) {
              await supabase.from('staged_transactions').insert({
                user_id: userId,
                pluggy_transaction_id: pluggyTxId,
@@ -191,17 +177,15 @@ Deno.serve(async (req) => {
                type,
                date: tx.date,
                wallet_id: walletId,
-               status: 'confirmed',
+               status: 'approved',
                suggested_category_id: matchingRule.category_id
              });
-             
              totalAutoApproved++;
              continue;
           }
         }
 
-        // Normal Staging or Suggestion mapping
-        const { error } = await supabase.from('staged_transactions').insert({
+        await supabase.from('staged_transactions').insert({
           user_id: userId,
           pluggy_transaction_id: pluggyTxId,
           pluggy_account_id: accountId,
@@ -215,20 +199,12 @@ Deno.serve(async (req) => {
           payment_method_id: matchingRule?.payment_method_id || null
         });
         
-        if (error) console.error(`[SYNC] Insert error: ${error.message}`);
-        else totalInserted++;
+        totalInserted++;
       }
     }
 
-    return new Response(
-      JSON.stringify({ success: true, inserted: totalInserted, skipped: totalSkipped, autoApproved: totalAutoApproved }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: true, inserted: totalInserted, skipped: totalSkipped, autoApproved: totalAutoApproved }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
-    console.error('[SYNC] Error:', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-    );
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
   }
 });
