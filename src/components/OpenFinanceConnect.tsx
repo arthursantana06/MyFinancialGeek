@@ -584,11 +584,38 @@ export default function OpenFinanceConnect() {
           </h3>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => refetch()}
-              className="w-8 h-8 rounded-xl glass-inner flex items-center justify-center hover:bg-glass-highlight transition-colors"
-              title="Atualizar"
+              disabled={syncing}
+              onClick={async () => {
+                if (!user) return;
+                const confirmClear = window.confirm("Isso excluirá todas as transações pendentes/ignoradas do Limbo e buscará novamente na origem. Deseja continuar?");
+                if (!confirmClear) return;
+                
+                setSyncing(true);
+                try {
+                  const { error } = await supabase
+                    .from("staged_transactions")
+                    .delete()
+                    .in("status", ["pending", "rejected"])
+                    .eq("user_id", user.id);
+                    
+                  if (error) throw error;
+                  
+                  toast.loading("Buscando transações nas integrações...", { id: "reset-sync" });
+                  await Promise.all(connections.map(c => syncTransactions(c.pluggy_item_id, 30)));
+                  
+                  toast.success("Transações recarregadas com sucesso!", { id: "reset-sync" });
+                  queryClient.invalidateQueries({ queryKey: ['staged_transactions'] });
+                  refetch();
+                } catch (err: any) {
+                  toast.error("Erro ao sincronizar: " + err.message, { id: "reset-sync" });
+                } finally {
+                  setSyncing(false);
+                }
+              }}
+              className="w-8 h-8 rounded-xl glass-inner flex items-center justify-center hover:bg-glass-highlight transition-colors disabled:opacity-50"
+              title="Limpar pendentes e sincronizar novamente"
             >
-              <RefreshCw size={14} className="text-muted-foreground" />
+              <RefreshCw size={14} className={`text-muted-foreground ${syncing ? 'animate-spin text-primary' : ''}`} />
             </button>
             <button
               onClick={handleConnect}

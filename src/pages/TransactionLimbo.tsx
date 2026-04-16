@@ -10,6 +10,7 @@ import { useWallets } from "@/hooks/useWallets";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import {
   Sparkles,
   Check,
@@ -98,6 +99,7 @@ const TransactionLimbo = () => {
 
   // Success animation state
   const [successId, setSuccessId] = useState<string | null>(null);
+  const [selectedApprovedTx, setSelectedApprovedTx] = useState<any | null>(null);
 
   // Unique Institutions derived from data
   const banks = useMemo(() => {
@@ -257,15 +259,14 @@ const TransactionLimbo = () => {
             </div>
 
             <button
-              onClick={async () => {
-                 if (!connections) return;
-                 toast.loading("Buscando novas transações...");
-                 try {
-                   await Promise.all(connections.map(c => forceSync.mutateAsync(c.pluggy_item_id)));
-                   toast.success("Sincronização concluída com sucesso!");
-                 } catch (err: any) {
-                   toast.error("Erro na sincronização: " + err.message);
-                 }
+              onClick={() => {
+                if (!connections?.length) return;
+                const forceSyncPromise = Promise.all(connections.map((c) => forceSync.mutateAsync(c.pluggy_item_id)));
+                toast.promise(forceSyncPromise, {
+                  loading: "Buscando novas transações...",
+                  success: "Sincronização concluída com sucesso!",
+                  error: "Erro na sincronização"
+                });
               }}
               disabled={forceSync.isPending}
               className="w-10 h-10 rounded-2xl glass-card border border-indigo-500/20 text-indigo-400 flex items-center justify-center hover:bg-indigo-500/10 transition-all active:scale-90 disabled:opacity-50"
@@ -545,9 +546,9 @@ const TransactionLimbo = () => {
         ) : (
           <div className="grid grid-cols-1 gap-4">
             {filtered.map((tx, idx) => {
-              const suggested = findSuggestedCategory(tx.description) ?? tx.suggested_category_id;
-              const suggestedCat = getCategory(suggested);
               const isSuccess = successId === tx.id;
+              const suggested = (isSuccess || tx.status === 'approved') ? tx.suggested_category_id : (findSuggestedCategory(tx.description) ?? tx.suggested_category_id);
+              const suggestedCat = getCategory(suggested);
               const wColor = walletColor(tx.wallet_id);
 
               if (isSuccess || tx.status === 'approved') {
@@ -555,7 +556,7 @@ const TransactionLimbo = () => {
                 return (
                   <button
                     key={tx.id}
-                    onClick={() => toast.info("Esta transação já foi consolidada")}
+                    onClick={() => setSelectedApprovedTx(tx)}
                     style={{ animationDelay: `${idx * 40}ms`, position: 'relative', overflow: 'hidden' }}
                     className="w-full text-left flex items-center gap-3 p-3 rounded-2xl transition-colors animate-in fade-in duration-500 bg-glass hover:bg-white/5 mt-2"
                   >
@@ -683,6 +684,62 @@ const TransactionLimbo = () => {
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
       />
+
+      <Drawer open={!!selectedApprovedTx} onOpenChange={(open) => !open && setSelectedApprovedTx(null)}>
+        {selectedApprovedTx && (
+          <DrawerContent className="bg-background border-t border-glass-border">
+            <div className="mx-auto w-full max-w-sm px-4 pb-8">
+              <DrawerHeader className="px-0">
+                <DrawerTitle className="text-foreground">Detalhes da Transação</DrawerTitle>
+              </DrawerHeader>
+              <div className="space-y-4 pt-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Valor</span>
+                  <span className={`text-xl font-bold ${selectedApprovedTx.type === 'income' ? 'text-chart-green' : 'text-foreground'}`}>
+                    {selectedApprovedTx.type === 'income' ? '+' : '-'}R${Number(selectedApprovedTx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Descrição</span>
+                  <span className="text-sm font-medium text-foreground truncate max-w-[200px] text-right">{selectedApprovedTx.description}</span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Data</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {format(new Date(selectedApprovedTx.date), "dd 'de' MMMM, yyyy", { locale: ptBR })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Categoria</span>
+                  <div className="flex items-center gap-2">
+                    {getCategory(selectedApprovedTx.suggested_category_id)?.icon_emoji && <span>{getCategory(selectedApprovedTx.suggested_category_id)?.icon_emoji}</span>}
+                    <span className="text-sm font-medium text-foreground">{getCategory(selectedApprovedTx.suggested_category_id)?.name || "-"}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Origem</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {connections?.find(c => c.pluggy_account_id === selectedApprovedTx.pluggy_account_id)?.institution_name || walletName(selectedApprovedTx.wallet_id) || "Desconhecida"}
+                  </span>
+                </div>
+                
+                <div className="pt-6">
+                   <button
+                     onClick={() => setSelectedApprovedTx(null)}
+                     className="w-full py-3 rounded-xl bg-glass-inner text-foreground font-semibold text-sm transition-all active:scale-[0.98]"
+                   >
+                     Fechar
+                   </button>
+                </div>
+              </div>
+            </div>
+          </DrawerContent>
+        )}
+      </Drawer>
 
       <BottomNav />
     </div>
