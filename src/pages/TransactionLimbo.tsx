@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Zap,
   ShieldCheck,
+  Banknote,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
@@ -62,15 +63,14 @@ const TransactionLimbo = () => {
     enabled: !!user,
   });
 
-  // State for tabs
-  const [activeBankId, setActiveBankId] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [activePluggyId, setActivePluggyId] = useState<string>("all");
 
   // Filters
   const [activePeriod, setActivePeriod] = useState<"7d" | "15d" | "30d" | "all" | "custom">("all");
   const [walletFilter, setWalletFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
 
   // Selected transaction for action drawer
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
@@ -110,13 +110,6 @@ const TransactionLimbo = () => {
     return list;
   }, [stagedTransactions, connections]);
 
-  // Safe auto-select of first bank
-  useEffect(() => {
-    if (!activeBankId && banks.length > 0) {
-      setActiveBankId(banks[0].id);
-    }
-  }, [banks, activeBankId]);
-
   // Unique wallets present in staged
   const uniqueWalletIds = useMemo(() => {
     const ids = new Set(stagedTransactions.map((t) => t.wallet_id));
@@ -132,9 +125,9 @@ const TransactionLimbo = () => {
   const filtered = useMemo(() => {
     let list = stagedTransactions;
     
-    // Bank Tab filter
-    if (activeBankId) {
-      list = list.filter((t) => t.pluggy_account_id === activeBankId);
+    // Bank (Pluggy) filter
+    if (activePluggyId !== "all") {
+      list = list.filter((t) => t.pluggy_account_id === activePluggyId);
     }
 
     if (walletFilter === "__none__") {
@@ -161,7 +154,7 @@ const TransactionLimbo = () => {
     }
     
     return list;
-  }, [stagedTransactions, walletFilter, activePeriod, dateFrom, dateTo, activeBankId]);
+  }, [stagedTransactions, walletFilter, activePeriod, dateFrom, dateTo, activePluggyId]);
 
   const openDetail = (tx: (typeof stagedTransactions)[number]) => {
     const suggested = findSuggestedCategory(tx.description) ?? tx.suggested_category_id;
@@ -279,40 +272,6 @@ const TransactionLimbo = () => {
           </div>
         </header>
 
-        {/* Bank Tabs */}
-        {!isLoading && banks.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-
-            {banks.map((bank) => (
-              <div key={bank.id} className="flex gap-1">
-                <button
-                  onClick={() => setActiveBankId(bank.id)}
-                  className={`px-4 py-2 rounded-2xl text-xs font-semibold whitespace-nowrap transition-all ${
-                    activeBankId === bank.id ? "bg-white/10 text-white border border-white/20 shadow-md" : "glass-card text-muted-foreground"
-                  }`}
-                >
-                  {bank.name}
-                </button>
-                {bank.itemId && activeBankId === bank.id && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm("Isso apagará o histórico local deste banco e buscará tudo novamente. Deseja continuar?")) {
-                        forceSync.mutate(bank.itemId!, {
-                          onSuccess: () => toast.success("Sincronização profunda concluída!"),
-                        });
-                      }
-                    }}
-                    disabled={forceSync.isPending}
-                    className="w-9 h-9 rounded-2xl glass-card flex items-center justify-center text-primary active:scale-90 disabled:opacity-50"
-                    title="Resetar e Sincronizar Tudo"
-                  >
-                    {forceSync.isPending ? <Loader2 size={12} className="animate-spin" /> : <Zap size={14} />}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* Rules Summary (Glassy Notification-like card) */}
         {showRulesPanel && (
@@ -473,6 +432,28 @@ const TransactionLimbo = () => {
               {w.name}
             </button>
           ))}
+
+          {banks.length > 0 && (
+            <>
+              <div className="h-4 w-[1px] bg-white/10 shrink-0 mx-1" />
+              <button
+                onClick={() => setActivePluggyId("all")}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 ${activePluggyId === "all" ? 'bg-indigo-500 text-white' : 'glass-inner text-muted-foreground'}`}
+              >
+                Todos Bancos
+              </button>
+              {banks.map((bank) => (
+                <button
+                  key={bank.id}
+                  onClick={() => setActivePluggyId(bank.id)}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 flex items-center gap-2 ${activePluggyId === bank.id ? 'bg-indigo-500 text-white' : 'glass-inner text-muted-foreground'}`}
+                >
+                  <Banknote size={12} />
+                  {bank.name}
+                </button>
+              ))}
+            </>
+          )}
         </div>
 
         {/* Date Filter Panel (Premium Period Selector) */}

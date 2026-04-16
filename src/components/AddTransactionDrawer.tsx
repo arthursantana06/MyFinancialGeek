@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useWallets } from "@/hooks/useWallets";
@@ -6,7 +6,6 @@ import { useCategories } from "@/hooks/useCategories";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { toast } from "sonner";
-import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAutomationRules } from "@/hooks/useAutomationRules";
 import { Sparkles, Trash2, XCircle } from "lucide-react";
@@ -55,7 +54,8 @@ const AddTransactionDrawer = ({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("");
+  const [selectedWalletId, setSelectedWalletId] = useState<string>("");
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>("");
 
   const getLocalDateString = () => {
     const d = new Date();
@@ -74,7 +74,8 @@ const AddTransactionDrawer = ({
       setAmount(initialData.amount || "");
       setDescription(initialData.description || "");
       setCategoryId(initialData.categoryId || "");
-      setSelectedPaymentMethod(initialData.paymentMethodId || "");
+      setSelectedWalletId(initialData.walletId || "");
+      setSelectedPaymentMethodId(initialData.paymentMethodId || "");
       if (initialData.date) {
         setDate(initialData.date.split("T")[0]);
       }
@@ -88,28 +89,29 @@ const AddTransactionDrawer = ({
       setAmount(initialData.amount || "");
       setDescription(initialData.description || "");
       setCategoryId(initialData.categoryId || "");
-      setSelectedPaymentMethod(initialData.paymentMethodId || "");
+      setSelectedWalletId(initialData.walletId || "");
+      setSelectedPaymentMethodId(initialData.paymentMethodId || "");
       if (initialData.date) {
         setDate(initialData.date.split("T")[0]);
       }
     }
   }, [initialData, open]);
 
-  // A selected payment method is a credit card if its ID belongs to a wallet object
-  const isCreditCard = creditCards.some(c => c.id === selectedPaymentMethod);
+  // Force expense type for Credit Cards
+  useEffect(() => {
+    const wallet = wallets.find(w => w.id === selectedWalletId);
+    if (wallet?.type === "credit_card") {
+      setType("expense");
+    }
+  }, [selectedWalletId, wallets]);
+
+  const isCreditCard = useMemo(() => {
+    const wallet = wallets.find(w => w.id === selectedWalletId);
+    return wallet?.type === "credit_card";
+  }, [selectedWalletId, wallets]);
 
   const handleSubmit = async () => {
-    // If it's a credit card, the payment_method_id is null and wallet_id is the selected card
-    // Otherwise, wallet_id is the default regular wallet (or first available wallet if no checking/cash exists)
-    // and payment_method_id is the selected custom pm
-    const defaultWalletId = regularWallets.length > 0
-      ? regularWallets[0].id
-      : (wallets.length > 0 ? wallets[0].id : null);
-
-    const finalWalletId = isCreditCard ? selectedPaymentMethod : defaultWalletId;
-    const finalPaymentMethodId = isCreditCard ? null : selectedPaymentMethod || null;
-
-    if (!amount || !description || !finalWalletId) {
+    if (!amount || !description || !selectedWalletId) {
       toast.error(t("tx.fillRequired"));
       return;
     }
@@ -123,9 +125,9 @@ const AddTransactionDrawer = ({
         amount: parseFloat(amount.replace(",", ".")),
         type,
         description,
-        wallet_id: finalWalletId,
+        wallet_id: selectedWalletId,
         category_id: categoryId || undefined,
-        payment_method_id: finalPaymentMethodId,
+        payment_method_id: selectedPaymentMethodId || null,
         status: "paid",
         date: safeDate.toISOString(),
       });
@@ -144,7 +146,8 @@ const AddTransactionDrawer = ({
       if (!initialData) {
         setAmount("");
         setDescription("");
-        setSelectedPaymentMethod("");
+        setSelectedWalletId("");
+        setSelectedPaymentMethodId("");
         setCategoryId("");
       }
     } catch (err: any) {
@@ -166,9 +169,10 @@ const AddTransactionDrawer = ({
               {(["expense", "income"] as TxType[]).map((tp) => (
                 <button
                   key={tp}
-                  onClick={() => setType(tp)}
+                  onClick={() => !isCreditCard && setType(tp)}
                   className={`flex-1 py-2 rounded-full text-xs font-medium transition-all ${type === tp ? "pill-active" : "pill-inactive"
-                    }`}
+                    } ${isCreditCard && tp === "income" ? "opacity-30 grayscale cursor-not-allowed" : ""}`}
+                  disabled={isCreditCard && tp === "income"}
                 >
                   {tp === "income" ? t("tx.income") : t("tx.expense")}
                 </button>
@@ -236,29 +240,48 @@ const AddTransactionDrawer = ({
               </div>
             )}
 
+            {/* Wallet Selection */}
+            <div className="space-y-1.5 mt-4">
+              <label className="text-xs text-muted-foreground">Onde?</label>
+              <div className="flex gap-1 flex-wrap">
+                {wallets.map((w) => (
+                  <button
+                    key={w.id}
+                    onClick={() => setSelectedWalletId(w.id)}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all flex items-center gap-1.5 ${
+                      selectedWalletId === w.id 
+                      ? (w.type === "credit_card" ? "bg-indigo-500 text-white" : "bg-primary text-white") 
+                      : "glass-inner text-muted-foreground"
+                    }`}
+                  >
+                    {w.type === "credit_card" ? "💳" : "🏦"} {w.name.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Payment method */}
-            {type === "expense" && (
+            {type === "expense" && selectedWalletId && (
               <div className="space-y-1.5 mt-4">
                 <label className="text-xs text-muted-foreground">{t("tx.paymentMethod")}</label>
                 <div className="flex gap-1 flex-wrap">
+                  <button
+                    onClick={() => setSelectedPaymentMethodId("")}
+                    className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
+                      !selectedPaymentMethodId ? "pill-active" : "glass-inner text-muted-foreground"
+                    }`}
+                  >
+                    PADRÃO
+                  </button>
                   {paymentMethods.filter(m => m.type === "expense").map((m) => (
                     <button
                       key={m.id}
-                      onClick={() => setSelectedPaymentMethod(m.id)}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${selectedPaymentMethod === m.id ? "pill-active" : "glass-inner text-muted-foreground"
-                        }`}
+                      onClick={() => setSelectedPaymentMethodId(m.id)}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${
+                        selectedPaymentMethodId === m.id ? "pill-active" : "glass-inner text-muted-foreground"
+                      }`}
                     >
                       {m.name.toUpperCase()}
-                    </button>
-                  ))}
-                  {creditCards.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => setSelectedPaymentMethod(c.id)}
-                      className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${selectedPaymentMethod === c.id ? "bg-indigo-500 text-white" : "glass-inner text-muted-foreground border border-indigo-500/30"
-                        }`}
-                    >
-                      💳 {c.name.toUpperCase()}
                     </button>
                   ))}
                 </div>

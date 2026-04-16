@@ -155,7 +155,37 @@ const WalletsPage = () => {
         _cardsCategoriesStats[walletId][cat.id].total += amount;
       };
 
-      // Is a custom payment method
+      // 1. Resolve Wallet Stats (Checking or Credit Card)
+      if (tx.wallet_id) {
+        const card = wallets.find(w => w.id === tx.wallet_id);
+        if (card) {
+          const txDate = new Date(tx.date);
+          let shouldCount = true;
+
+          if (card.type === "checking") {
+            if (txDate < currentMonthStart) shouldCount = false;
+          }
+          else if (card.type === "credit_card" && card.closing_day) {
+            let invoiceStart: Date;
+            if (currentDay > card.closing_day) {
+              invoiceStart = new Date(now.getFullYear(), now.getMonth(), card.closing_day + 1);
+            } else {
+              invoiceStart = new Date(now.getFullYear(), now.getMonth() - 1, card.closing_day + 1);
+            }
+            if (txDate < invoiceStart) shouldCount = false;
+          }
+
+          if (shouldCount) {
+            if (!_cardsStats[card.id]) {
+              _cardsStats[card.id] = { total: 0, color: card.color, name: card.name };
+            }
+            _cardsStats[card.id].total += Number(tx.amount);
+            trackCategory(card.id, Number(tx.amount));
+          }
+        }
+      }
+
+      // 2. Resolve Payment Method Stats (For the distribution chart)
       if (tx.payment_method_id) {
         const pm = paymentMethods.find(m => m.id === tx.payment_method_id);
         if (pm) {
@@ -164,34 +194,12 @@ const WalletsPage = () => {
           }
           _customMethodsStats[pm.id].total += Number(tx.amount);
         }
-      }
-      // Is a wallet (credit card acting as pm or standard checking)
-      else if (tx.wallet_id) {
-        const card = wallets.find(w => w.id === tx.wallet_id);
-        if (card) {
-          const txDate = new Date(tx.date);
-
-          if (card.type === "checking") {
-            // Debit cards only count expenses of the current month
-            if (txDate < currentMonthStart) return;
-          }
-          else if (card.type === "credit_card" && card.closing_day) {
-            // If Credit Card, only count expenses inside the current invoice window
-            let invoiceStart: Date;
-            if (currentDay > card.closing_day) {
-              invoiceStart = new Date(now.getFullYear(), now.getMonth(), card.closing_day + 1);
-            } else {
-              invoiceStart = new Date(now.getFullYear(), now.getMonth() - 1, card.closing_day + 1);
-            }
-            // Skip tracking total if not in this invoice
-            if (txDate < invoiceStart) return;
-          }
-
-          if (!_cardsStats[card.id]) {
-            _cardsStats[card.id] = { total: 0, color: card.color, name: card.name };
-          }
-          _cardsStats[card.id].total += Number(tx.amount);
-          trackCategory(card.id, Number(tx.amount));
+      } else if (tx.wallet_id) {
+        // If no specifically selected payment method, we treat the wallet as the method (e.g. standard debit/credit)
+        const wallet = wallets.find(w => w.id === tx.wallet_id);
+        if (wallet && wallet.type === "credit_card") {
+           // We don't duplicate credit card stats in customMethodsStats if they are already in cardsStats?
+           // Actually, the chart shows both. Let's keep consistency.
         }
       }
     });
