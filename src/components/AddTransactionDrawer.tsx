@@ -132,10 +132,16 @@ const AddTransactionDrawer = ({
         date: safeDate.toISOString(),
       });
 
-      // Cleanup staged transaction if applicable
+      // Update staged transaction instead of removing it
       if (initialData?.stagedId) {
         const { supabase } = await import("@/integrations/supabase/client");
-        await supabase.from("staged_transactions").delete().eq("id", initialData.stagedId);
+        await supabase.from("staged_transactions").update({
+          status: "approved",
+          suggested_category_id: categoryId || null,
+          wallet_id: selectedWalletId,
+          type,
+          updated_at: new Date().toISOString()
+        }).eq("id", initialData.stagedId);
         queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
       }
 
@@ -210,10 +216,11 @@ const AddTransactionDrawer = ({
               <input
                 type="date"
                 value={date}
+                disabled={!!initialData?.stagedId}
                 onChange={(e) => setDate(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all appearance-none"
+                className={`w-full glass-inner rounded-xl px-4 py-3 text-base md:text-sm text-foreground bg-transparent focus:outline-none focus:ring-1 focus:ring-primary/50 focus:border-primary/50 transition-all appearance-none ${!!initialData?.stagedId ? 'opacity-50 cursor-not-allowed' : ''}`}
               />
             </div>
 

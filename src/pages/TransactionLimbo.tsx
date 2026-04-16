@@ -8,7 +8,8 @@ import { useCategories } from "@/hooks/useCategories";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import { useWallets } from "@/hooks/useWallets";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import {
   Sparkles,
   Check,
@@ -65,6 +66,12 @@ const TransactionLimbo = () => {
 
   const [showFilters, setShowFilters] = useState(false);
   const [activePluggyId, setActivePluggyId] = useState<string>("all");
+
+  const lastUpdateDate = useMemo(() => {
+    if (!connections || connections.length === 0) return null;
+    const dates = connections.map(c => new Date(c.updated_at || c.created_at || 0).getTime());
+    return new Date(Math.max(...dates));
+  }, [connections]);
 
   // Filters
   const [activePeriod, setActivePeriod] = useState<"7d" | "15d" | "30d" | "all" | "custom">("all");
@@ -242,20 +249,29 @@ const TransactionLimbo = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex flex-col items-end pr-1 justify-center mt-1">
+              <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider leading-none">Atualização</span>
+              <span className="text-[10px] text-white/80 font-medium whitespace-nowrap leading-tight">
+                {lastUpdateDate ? `há ${formatDistanceToNow(lastUpdateDate, { locale: ptBR })}` : '...'}
+              </span>
+            </div>
+
             <button
-              onClick={() => {
-                if (window.confirm('Desfazer todos os "Ignorar"? Isso trará de volta as transações que você removeu da lista.')) {
-                  resetRejectedTransactions.mutate(undefined, {
-                    onSuccess: () => toast.success('Transações restauradas com sucesso!'),
-                    onError: (err: any) => toast.error('Erro ao restaurar: ' + err.message),
-                  });
-                }
+              onClick={async () => {
+                 if (!connections) return;
+                 toast.loading("Buscando novas transações...");
+                 try {
+                   await Promise.all(connections.map(c => forceSync.mutateAsync(c.pluggy_item_id)));
+                   toast.success("Sincronização concluída com sucesso!");
+                 } catch (err: any) {
+                   toast.error("Erro na sincronização: " + err.message);
+                 }
               }}
-              disabled={resetRejectedTransactions.isPending}
-              className="w-10 h-10 rounded-2xl glass-card flex items-center justify-center text-primary hover:bg-primary/10 transition-all active:scale-90 disabled:opacity-50"
-              title="Recuperar transações ignoradas"
+              disabled={forceSync.isPending}
+              className="w-10 h-10 rounded-2xl glass-card border border-indigo-500/20 text-indigo-400 flex items-center justify-center hover:bg-indigo-500/10 transition-all active:scale-90 disabled:opacity-50"
+              title="Buscar novas transações"
             >
-              {resetRejectedTransactions.isPending ? (
+              {forceSync.isPending ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
                 <RefreshCw size={18} />
