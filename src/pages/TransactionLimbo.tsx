@@ -550,47 +550,64 @@ const TransactionLimbo = () => {
               const isSuccess = successId === tx.id;
               const wColor = walletColor(tx.wallet_id);
 
+              if (isSuccess || tx.status === 'approved') {
+                const isPositive = tx.type === "income";
+                return (
+                  <button
+                    key={tx.id}
+                    onClick={() => toast.info("Esta transação já foi consolidada")}
+                    style={{ animationDelay: `${idx * 40}ms`, position: 'relative', overflow: 'hidden' }}
+                    className="w-full text-left flex items-center gap-3 p-3 rounded-2xl transition-colors animate-in fade-in duration-500 bg-glass hover:bg-white/5 mt-2"
+                  >
+                    {isSuccess && (
+                       <div className="absolute inset-0 flex items-center justify-center z-10 animate-in fade-in duration-300 backdrop-blur-[2px] bg-chart-green/10 rounded-2xl">
+                          <div className="w-10 h-10 rounded-full bg-chart-green flex items-center justify-center shadow-lg shadow-chart-green/40">
+                            <Check size={20} className="text-white" />
+                          </div>
+                       </div>
+                    )}
+                    <div
+                      className="w-10 h-10 rounded-xl bg-glass border border-glass flex items-center justify-center flex-shrink-0"
+                      style={suggestedCat ? { borderColor: suggestedCat.color + "30" } : {}}
+                    >
+                      {suggestedCat?.icon_emoji ? (
+                        <span className="text-xl">{suggestedCat.icon_emoji}</span>
+                      ) : (
+                        <Sparkles size={18} className="text-muted-foreground" strokeWidth={1.5} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
+                      <p className="text-xs text-muted-foreground">{suggestedCat?.name || walletName(tx.wallet_id)}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className={`text-sm font-semibold tabular-nums tracking-tight ${isPositive ? "text-chart-green" : "text-foreground"}`}>
+                        {isPositive ? "+" : "-"}R${Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </button>
+                );
+              }
+
               return (
                 <button
                   key={tx.id}
-                  onClick={() => tx.status !== 'approved' ? openDetail(tx) : toast.info("Esta transação já foi consolidada")}
+                  onClick={() => openDetail(tx)}
                   style={{ animationDelay: `${idx * 40}ms` }}
                   className={`group relative glass-card p-5 text-left transition-all hover:translate-y-[-2px] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden 
-                    ${isSuccess || tx.status === 'approved' ? 'border-chart-green/30' : ''} 
-                    ${tx.status === 'rejected' ? 'opacity-40' : ''} 
-                    ${tx.status === 'approved' ? 'bg-chart-green/[0.02]' : ''}`}
+                    ${tx.status === 'rejected' ? 'opacity-40' : 'hover:bg-white/5 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]'}`}
                 >
                   {/* Subtle edge glow based on wallet */}
-                  <div className={`absolute top-0 left-0 w-[2px] h-full ${tx.status === 'rejected' ? 'opacity-20' : tx.status === 'approved' ? 'opacity-100' : 'opacity-40'}`} style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : tx.status === 'approved' ? '#10b981' : wColor }} />
+                  <div className={`absolute top-0 left-0 w-[2px] h-full ${tx.status === 'rejected' ? 'opacity-20' : 'opacity-40'}`} style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
                   
-                  {/* Success/Approved Overlay */}
-                  {(isSuccess || tx.status === 'approved') && !isSuccess && (
-                     <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-chart-green/10 text-chart-green border border-chart-green/20 animate-in fade-in zoom-in-95">
-                        <Check size={10} strokeWidth={3} />
-                        <span className="text-[9px] font-black uppercase tracking-widest">Consolidado</span>
-                     </div>
-                  )}
-
-                  {isSuccess && (
-                     <div className="absolute inset-0 bg-chart-green/10 flex items-center justify-center z-10 animate-in fade-in duration-300 backdrop-blur-[2px]">
-                        <div className="w-12 h-12 rounded-full bg-chart-green flex items-center justify-center shadow-lg shadow-chart-green/40">
-                          <Check size={24} className="text-white" />
-                        </div>
-                     </div>
-                  )}
-
                   <div className="flex items-center gap-4">
                     {/* Wallet Icon with specific glow */}
                     <div 
                       className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden ${tx.status === 'rejected' ? 'bg-slate-500/10' : ''}`}
-                      style={tx.status !== 'rejected' ? { backgroundColor: tx.status === 'approved' ? '#10b98110' : `${wColor}15` } : {}}
+                      style={tx.status !== 'rejected' ? { backgroundColor: `${wColor}15` } : {}}
                     >
-                       <div className="absolute inset-0 opacity-20 blur-sm" style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : tx.status === 'approved' ? '#10b981' : wColor }} />
-                       {tx.status === 'approved' ? (
-                         <Check size={20} className="relative z-10 text-chart-green" />
-                       ) : (
-                         <Wallet size={20} className="relative z-10" style={{ color: tx.status === 'rejected' ? '#64748b' : wColor }} />
-                       )}
+                       <div className="absolute inset-0 opacity-20 blur-sm" style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
+                       <Wallet size={20} className="relative z-10" style={{ color: tx.status === 'rejected' ? '#64748b' : wColor }} />
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-1">
@@ -623,11 +640,7 @@ const TransactionLimbo = () => {
                           )}
                           
                           {suggestedCat && (
-                             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl transition-all ${
-                               tx.status === 'approved' 
-                               ? 'bg-chart-green/10 text-chart-green border border-chart-green/20' 
-                               : 'bg-primary/10 text-primary border border-primary/20'
-                             }`}>
+                             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl transition-all bg-primary/10 text-primary border border-primary/20`}>
                                {suggestedCat.icon_emoji ? (
                                  <span className="text-[12px]">{suggestedCat.icon_emoji}</span>
                                ) : (
