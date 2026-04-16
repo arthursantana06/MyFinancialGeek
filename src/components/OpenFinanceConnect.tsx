@@ -343,7 +343,7 @@ export default function OpenFinanceConnect() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Conecte seus bancos e vincule cada conta ou cartão a uma carteira do sistema.
+          Conecte seus bancos e vincule cada conta ou cartão a uma conta do sistema.
         </p>
 
         <div className="bg-primary/5 border border-primary/10 rounded-xl p-3 flex gap-3 items-start">
@@ -431,7 +431,7 @@ export default function OpenFinanceConnect() {
                               {wallet ? (
                                 <>
                                   <CheckCircle2 size={10} className="text-chart-green shrink-0" />
-                                  Carteira: {wallet.name}
+                                  Conta: {wallet.name}
                                 </>
                               ) : (
                                 <>

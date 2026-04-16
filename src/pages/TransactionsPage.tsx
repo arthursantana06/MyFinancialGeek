@@ -101,7 +101,11 @@ const TransactionsPage = () => {
               onChange={(e) => setWalletId(e.target.value)}
             >
               <option value="all" className="bg-background text-foreground text-sm">Contas</option>
-              {wallets.map(w => <option key={w.id} value={w.id} className="bg-background text-foreground text-sm">{w.name}</option>)}
+              {wallets.map(w => (
+                <option key={w.id} value={w.id} className="bg-background text-foreground text-sm">
+                  {w.institution_name ? `${w.institution_name} • ` : ''}{w.name}
+                </option>
+              ))}
             </select>
           </div>
 

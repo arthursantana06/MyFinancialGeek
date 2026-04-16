@@ -83,7 +83,9 @@ export default function TransactionList({ externalFilters, pageSize = 15 }: { ex
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{tx.description}</p>
-                      <p className="text-xs text-muted-foreground">{tx.categories?.name || (tx.payment_methods as any)?.name || tx.wallets?.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {tx.categories?.name || (tx.payment_methods as any)?.name || (tx.wallets?.institution_name ? `${tx.wallets.institution_name} • ` : '') + (tx.wallets?.name || '')}
+                      </p>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className={`text-sm font-semibold ${isPositive ? "text-chart-green" : "text-foreground"}`}>

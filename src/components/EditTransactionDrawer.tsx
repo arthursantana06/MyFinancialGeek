@@ -212,7 +212,7 @@ const EditTransactionDrawer = ({ open, onOpenChange, transaction }: Props) => {
                                             className={`px-3 py-1.5 rounded-full text-[11px] font-medium transition-all ${selectedPaymentMethod === c.id ? "bg-indigo-500 text-white" : "glass-inner text-muted-foreground border border-indigo-500/30"
                                                 }`}
                                         >
-                                            💳 {c.name.toUpperCase()}
+                                            💳 {c.institution_name ? `${c.institution_name.toUpperCase()} • ` : ''}{c.name.toUpperCase()}
                                         </button>
                                     ))}
                                 </div>

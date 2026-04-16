@@ -225,7 +225,7 @@ const TransactionLimbo = () => {
   };
 
   const walletName = (walletId: string | null) => {
-    if (!walletId) return "Sem carteira";
+    if (!walletId) return "Sem conta";
     return wallets.find((w) => w.id === walletId)?.name ?? "Conta";
   };
 

@@ -278,7 +278,7 @@ const AddTransactionDrawer = ({
                         : "glass-inner text-muted-foreground"
                       }`}
                     >
-                      {w.type === "credit_card" ? "💳" : "🏦"} {w.name.toUpperCase()}
+                      {w.type === "credit_card" ? "💳" : "🏦"} {w.institution_name ? `${w.institution_name.toUpperCase()} • ` : ''}{w.name.toUpperCase()}
                     </button>
                   ))}
                 </div>
