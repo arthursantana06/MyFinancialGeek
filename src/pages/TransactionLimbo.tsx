@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStagedTransactions } from "@/hooks/useStagedTransactions";
 import { useAutomationRules } from "@/hooks/useAutomationRules";
 import { useCategories } from "@/hooks/useCategories";
+import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import { useWallets } from "@/hooks/useWallets";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -26,9 +27,11 @@ import {
   XCircle,
   RefreshCw,
   Zap,
+  ShieldCheck,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "@/components/BottomNav";
+import AddTransactionDrawer from "@/components/AddTransactionDrawer";
 
 const TransactionLimbo = () => {
   const navigate = useNavigate();
@@ -46,6 +49,7 @@ const TransactionLimbo = () => {
   const { rules, addRule, deleteRule, findSuggestedCategory } = useAutomationRules();
   const { categories } = useCategories();
   const { wallets } = useWallets();
+  const { paymentMethods } = usePaymentMethods();
 
   // Fetch connections to map account names/institutions
   const { data: connections } = useQuery({
@@ -59,24 +63,28 @@ const TransactionLimbo = () => {
   });
 
   // State for tabs
-  const [activeBankId, setActiveBankId] = useState<string>("all");
+  const [activeBankId, setActiveBankId] = useState<string | null>(null);
 
   // Filters
+  const [activePeriod, setActivePeriod] = useState<"7d" | "15d" | "30d" | "all" | "custom">("all");
   const [walletFilter, setWalletFilter] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
   // Selected transaction for action drawer
-  const [selected, setSelected] = useState<(typeof stagedTransactions)[number] | null>(null);
-  const [editedDescription, setEditedDescription] = useState("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>("");
-  const [selectedWalletId, setSelectedWalletId] = useState<string>("");
+  const [addDrawerOpen, setAddDrawerOpen] = useState(false);
+  const [drawerData, setDrawerData] = useState<any>(null);
+
+  // For rule creation
+  const [selectedForRules, setSelectedForRules] = useState<(typeof stagedTransactions)[number] | null>(null);
 
   // Create rule mini-form
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [ruleKeyword, setRuleKeyword] = useState("");
   const [ruleCategoryId, setRuleCategoryId] = useState("");
+  const [ruleType, setRuleType] = useState<"suggest" | "auto_approve">("suggest");
+  const [rulePaymentMethodId, setRulePaymentMethodId] = useState("");
 
   // Show rules panel
   const [showRulesPanel, setShowRulesPanel] = useState(false);
@@ -89,14 +97,25 @@ const TransactionLimbo = () => {
     const map = new Map<string, { name: string; itemId: string | null }>();
     stagedTransactions.forEach((tx) => {
       const conn = connections?.find((c) => c.pluggy_account_id === tx.pluggy_account_id);
-      const name = conn?.pluggy_account_name || conn?.institution_name || "Geral";
-      const id = tx.pluggy_account_id || "geral";
+      if (!conn) return; // Skip "Geral" or unmapped
+      
+      const name = conn.pluggy_account_name || conn.institution_name || "Banco";
+      const id = tx.pluggy_account_id!;
       if (!map.has(id)) {
-        map.set(id, { name, itemId: conn?.pluggy_item_id || null });
+        map.set(id, { name, itemId: conn.pluggy_item_id || null });
       }
     });
-    return Array.from(map.entries()).map(([id, info]) => ({ id, ...info }));
+
+    const list = Array.from(map.entries()).map(([id, info]) => ({ id, ...info }));
+    return list;
   }, [stagedTransactions, connections]);
+
+  // Safe auto-select of first bank
+  useEffect(() => {
+    if (!activeBankId && banks.length > 0) {
+      setActiveBankId(banks[0].id);
+    }
+  }, [banks, activeBankId]);
 
   // Unique wallets present in staged
   const uniqueWalletIds = useMemo(() => {
@@ -114,8 +133,8 @@ const TransactionLimbo = () => {
     let list = stagedTransactions;
     
     // Bank Tab filter
-    if (activeBankId !== "all") {
-      list = list.filter((t) => (t.pluggy_account_id || "geral") === activeBankId);
+    if (activeBankId) {
+      list = list.filter((t) => t.pluggy_account_id === activeBankId);
     }
 
     if (walletFilter === "__none__") {
@@ -123,67 +142,49 @@ const TransactionLimbo = () => {
     } else if (walletFilter !== "all") {
       list = list.filter((t) => t.wallet_id === walletFilter);
     }
-    if (dateFrom) {
-      list = list.filter((t) => t.date >= dateFrom);
+
+    const now = new Date();
+    if (activePeriod === "7d") {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      list = list.filter((t) => new Date(t.date) >= d);
+    } else if (activePeriod === "30d") {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      list = list.filter((t) => new Date(t.date) >= d);
+    } else if (activePeriod === "custom") {
+      if (dateFrom) list = list.filter((t) => t.date >= dateFrom);
+      if (dateTo) {
+        const toEnd = dateTo + "T23:59:59";
+        list = list.filter((t) => t.date <= toEnd);
+      }
     }
-    if (dateTo) {
-      const toEnd = dateTo + "T23:59:59";
-      list = list.filter((t) => t.date <= toEnd);
-    }
+    
     return list;
-  }, [stagedTransactions, walletFilter, dateFrom, dateTo, activeBankId]);
+  }, [stagedTransactions, walletFilter, activePeriod, dateFrom, dateTo, activeBankId]);
 
   const openDetail = (tx: (typeof stagedTransactions)[number]) => {
-    setSelected(tx);
-    setEditedDescription(tx.description);
     const suggested = findSuggestedCategory(tx.description) ?? tx.suggested_category_id;
-    setSelectedCategoryId(suggested ?? "");
-    setSelectedWalletId(tx.wallet_id ?? "");
-    setShowRuleForm(false);
-    setRuleKeyword("");
-    setRuleCategoryId("");
+    
+    setDrawerData({
+      amount: tx.amount.toString(),
+      description: tx.description,
+      date: tx.date,
+      type: tx.type,
+      walletId: tx.wallet_id,
+      categoryId: suggested || "",
+      paymentMethodId: tx.payment_method_id || "",
+      stagedId: tx.id
+    });
+    setAddDrawerOpen(true);
   };
 
-  const closeDetail = () => setSelected(null);
-
-  const handleApprove = async () => {
-    if (!selected) return;
-    if (!selectedCategoryId) {
-      toast.error("Selecione uma categoria antes de confirmar.");
-      return;
-    }
-
-    setSuccessId(selected.id);
-
-    try {
-      await approveTransaction.mutateAsync({
-        stagedId: selected.id,
-        description: editedDescription.trim() || selected.description,
-        category_id: selectedCategoryId,
-        wallet_id: selectedWalletId || null,
-        amount: selected.amount,
-        type: selected.type,
-        date: selected.date,
-      });
-      toast.success("Transação consolidada com sucesso!");
-      closeDetail();
-    } catch {
-      toast.error("Erro ao consolidar transação.");
-    } finally {
-      setTimeout(() => setSuccessId(null), 600);
-    }
+  const closeDetail = () => {
+    setAddDrawerOpen(false);
+    setDrawerData(null);
   };
 
-  const handleReject = async () => {
-    if (!selected) return;
-    try {
-      await rejectTransaction.mutateAsync(selected.id);
-      toast.success("Transação descartada.");
-      closeDetail();
-    } catch {
-      toast.error("Erro ao descartar transação.");
-    }
-  };
+
 
   const handleCreateRule = async () => {
     if (!ruleKeyword.trim() || !ruleCategoryId) {
@@ -191,11 +192,14 @@ const TransactionLimbo = () => {
       return;
     }
     try {
-      await addRule.mutateAsync({ keyword: ruleKeyword, category_id: ruleCategoryId });
+      await addRule.mutateAsync({
+        keyword: ruleKeyword,
+        category_id: ruleCategoryId,
+        rule_type: ruleType,
+        payment_method_id: rulePaymentMethodId || undefined
+      });
       toast.success("Regra de automação criada!");
       setShowRuleForm(false);
-      setRuleKeyword("");
-      setRuleCategoryId("");
     } catch {
       toast.error("Erro ao criar regra.");
     }
@@ -255,41 +259,20 @@ const TransactionLimbo = () => {
                 }
               }}
               disabled={resetRejectedTransactions.isPending}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-2xl glass-card text-xs font-medium text-primary hover:bg-primary/10 transition-all active:scale-95 disabled:opacity-50"
+              className="w-10 h-10 rounded-2xl glass-card flex items-center justify-center text-primary hover:bg-primary/10 transition-all active:scale-90 disabled:opacity-50"
               title="Recuperar transações ignoradas"
             >
               {resetRejectedTransactions.isPending ? (
-                <Loader2 size={12} className="animate-spin" />
+                <Loader2 size={16} className="animate-spin" />
               ) : (
-                <RefreshCw size={14} />
+                <RefreshCw size={18} />
               )}
-              Sincronizar
             </button>
 
-            {filtered.length > 0 && (
-              <button
-                onClick={() => {
-                  if (window.confirm(`Tem certeza que deseja ignorar todas as ${filtered.length} transações pendentes?`)) {
-                    rejectAllPending.mutate(undefined, {
-                      onSuccess: () => toast.success('Todas as transações pendentes foram ignoradas.'),
-                      onError: (err: any) => toast.error('Erro: ' + err.message),
-                    });
-                  }
-                }}
-                disabled={rejectAllPending.isPending}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-2xl glass-card text-xs font-medium text-destructive hover:bg-destructive/10 transition-all active:scale-95 disabled:opacity-50"
-              >
-                {rejectAllPending.isPending ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <XCircle size={14} />
-                )}
-                Ignorar Todas
-              </button>
-            )}
             <button
               onClick={() => setShowRulesPanel(!showRulesPanel)}
-              className={`w-10 h-10 rounded-2xl glass-card flex items-center justify-center transition-all active:scale-90 ${showRulesPanel ? "bg-primary text-white border-primary" : "text-muted-foreground"}`}
+              className={`w-10 h-10 rounded-2xl glass-card flex items-center justify-center transition-all active:scale-90 ${showRulesPanel ? "bg-primary text-white border-primary shadow-lg glow-blue" : "text-muted-foreground hover:bg-white/5"}`}
+              title="Regras de Automação"
             >
               <Wand2 size={20} />
             </button>
@@ -299,14 +282,7 @@ const TransactionLimbo = () => {
         {/* Bank Tabs */}
         {!isLoading && banks.length > 0 && (
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
-            <button
-              onClick={() => setActiveBankId("all")}
-              className={`px-4 py-2 rounded-2xl text-xs font-semibold whitespace-nowrap transition-all ${
-                activeBankId === "all" ? "bg-primary text-white shadow-lg glow-blue" : "glass-card text-muted-foreground"
-              }`}
-            >
-              Todos
-            </button>
+
             {banks.map((bank) => (
               <div key={bank.id} className="flex gap-1">
                 <button
@@ -346,10 +322,90 @@ const TransactionLimbo = () => {
                 <Sparkles size={16} className="text-primary" />
                 Regras de Automação
               </h3>
-              <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">
-                {rules.length} Ativa{rules.length === 1 ? "s" : "s"}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setShowRuleForm(!showRuleForm);
+                    if (!showRuleForm) {
+                      setRuleKeyword("");
+                      setRuleCategoryId("");
+                    }
+                  }}
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${showRuleForm ? 'bg-primary text-white' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                >
+                  {showRuleForm ? <X size={14} /> : <Plus size={14} />}
+                </button>
+                <span className="text-[10px] bg-primary/20 text-primary px-2 py-0.5 rounded-full font-bold">
+                  {rules.length} Ativa{rules.length === 1 ? "" : "s"}
+                </span>
+              </div>
             </div>
+
+            {showRuleForm && (
+              <div className="space-y-4 p-4 glass-inner rounded-2xl border-primary/20 animate-in zoom-in-95 duration-200">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-muted-foreground ml-1">Termo exato na descrição</span>
+                  <input
+                    type="text"
+                    value={ruleKeyword}
+                    onChange={(e) => setRuleKeyword(e.target.value)}
+                    className="w-full glass-inner bg-black/20 rounded-xl px-4 py-3 text-xs font-mono text-primary placeholder:text-primary/20 focus:outline-none border-primary/20"
+                    placeholder="Ex: Netflix"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-muted-foreground ml-1">Categoria</span>
+                    <select
+                      value={ruleCategoryId}
+                      onChange={(e) => setRuleCategoryId(e.target.value)}
+                      className="w-full appearance-none glass-inner bg-black/20 rounded-xl px-4 py-3 text-[10px] font-bold text-white/60 focus:outline-none border border-white/10"
+                    >
+                      <option value="">Categoria...</option>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.icon_emoji ? `${c.icon_emoji} ${c.name}` : c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-muted-foreground ml-1">Método</span>
+                    <select
+                      value={rulePaymentMethodId}
+                      onChange={(e) => setRulePaymentMethodId(e.target.value)}
+                      className="w-full appearance-none glass-inner bg-black/20 rounded-xl px-4 py-3 text-[10px] font-bold text-white/60 focus:outline-none border border-white/10"
+                    >
+                      <option value="">Padrão...</option>
+                      {paymentMethods.map(pm => (
+                        <option key={pm.id} value={pm.id}>{pm.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setRuleType(ruleType === 'auto_approve' ? 'suggest' : 'auto_approve')}
+                  className={`w-full py-3 rounded-xl border text-[10px] font-bold uppercase transition-all flex items-center justify-center gap-2 ${
+                    ruleType === 'auto_approve' 
+                    ? 'bg-chart-green/20 border-chart-green text-chart-green' 
+                    : 'bg-white/5 border-white/10 text-white/40'
+                  }`}
+                >
+                  <ShieldCheck size={12} />
+                  {ruleType === 'auto_approve' ? 'Consolidar Direto Ativado' : 'Apenas Preencher Dados'}
+                </button>
+                
+                <button
+                  onClick={handleCreateRule}
+                  disabled={addRule.isPending}
+                  className="w-full py-3 rounded-xl bg-primary text-white text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
+                >
+                  {addRule.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Salvar Fluxo Automático
+                </button>
+              </div>
+            )}
             {rules.length === 0 ? (
               <p className="text-xs text-muted-foreground py-2 italic">Ative regras clicando no ícone de varinha ao consolidar uma transação externa.</p>
             ) : (
@@ -384,8 +440,8 @@ const TransactionLimbo = () => {
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 ${showFilters ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'glass-card text-muted-foreground'}`}
           >
-            <Filter size={14} />
-            Filtros
+            <Calendar size={14} />
+            Período
           </button>
           
           <div className="h-4 w-[1px] bg-white/10 shrink-0" />
@@ -394,7 +450,7 @@ const TransactionLimbo = () => {
             onClick={() => setWalletFilter("all")}
             className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 ${walletFilter === "all" ? 'bg-white text-black' : 'glass-inner text-muted-foreground'}`}
           >
-            Todas
+            Todas Carteiras
           </button>
           
           {hasUnlinked && (
@@ -411,7 +467,7 @@ const TransactionLimbo = () => {
             <button
               key={w.id}
               onClick={() => setWalletFilter(w.id)}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 flex items-center gap-2 ${walletFilter === w.id ? 'bg-white text-black' : 'glass-inner text-muted-foreground'}`}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all shrink-0 flex items-center gap-2 ${walletFilter === w.id ? 'bg-chart-green text-white' : 'glass-inner text-muted-foreground'}`}
             >
               <div className="w-2 h-2 rounded-full shadow-sm" style={{ backgroundColor: w.color }} />
               {w.name}
@@ -419,33 +475,52 @@ const TransactionLimbo = () => {
           ))}
         </div>
 
-        {/* Date Filter Panel (Liquid Slide) */}
+        {/* Date Filter Panel (Premium Period Selector) */}
         {showFilters && (
-          <div className="glass-card p-4 grid grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Início</label>
-              <div className="relative">
-                <Calendar size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className="w-full bg-glass-inner rounded-xl pl-8 pr-3 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary/50 [color-scheme:dark]"
-                />
-              </div>
+          <div className="glass-card p-2 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex gap-1">
+              {[
+                { id: "7d", label: "7 Dias" },
+                { id: "30d", label: "30 Dias" },
+                { id: "all", label: "Tudo" },
+                { id: "custom", label: "Personalizado" },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => setActivePeriod(p.id as any)}
+                  className={`flex-1 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${
+                    activePeriod === p.id 
+                      ? "bg-primary text-white shadow-md" 
+                      : "bg-white/5 text-muted-foreground hover:bg-white/10"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Fim</label>
-              <div className="relative">
-                <Calendar size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className="w-full bg-glass-inner rounded-xl pl-8 pr-3 py-2 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary/50 [color-scheme:dark]"
-                />
+
+            {activePeriod === "custom" && (
+              <div className="grid grid-cols-2 gap-2 p-2 animate-in zoom-in-95 duration-200">
+                <div className="space-y-1">
+                  <span className="text-[9px] font-bold text-muted-foreground ml-1 uppercase">De</span>
+                  <input
+                    type="date"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="w-full bg-black/40 rounded-xl px-3 py-2 text-[10px] text-white focus:outline-none border border-white/5 [color-scheme:dark]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[9px] font-bold text-muted-foreground ml-1 uppercase">Até</span>
+                  <input
+                    type="date"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="w-full bg-black/40 rounded-xl px-3 py-2 text-[10px] text-white focus:outline-none border border-white/5 [color-scheme:dark]"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
@@ -481,14 +556,24 @@ const TransactionLimbo = () => {
               return (
                 <button
                   key={tx.id}
-                  onClick={() => openDetail(tx)}
+                  onClick={() => tx.status !== 'approved' ? openDetail(tx) : toast.info("Esta transação já foi consolidada")}
                   style={{ animationDelay: `${idx * 40}ms` }}
-                  className={`group relative glass-card p-5 text-left transition-all hover:translate-y-[-2px] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden ${isSuccess ? 'border-chart-green shadow-[0_0_30px_rgba(16,185,129,0.15)]' : ''} ${tx.status === 'rejected' ? 'opacity-50' : ''}`}
+                  className={`group relative glass-card p-5 text-left transition-all hover:translate-y-[-2px] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden 
+                    ${isSuccess || tx.status === 'approved' ? 'border-chart-green/30' : ''} 
+                    ${tx.status === 'rejected' ? 'opacity-40' : ''} 
+                    ${tx.status === 'approved' ? 'bg-chart-green/[0.02]' : ''}`}
                 >
                   {/* Subtle edge glow based on wallet */}
-                  <div className={`absolute top-0 left-0 w-[2px] h-full ${tx.status === 'rejected' ? 'opacity-20' : 'opacity-40'}`} style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
+                  <div className={`absolute top-0 left-0 w-[2px] h-full ${tx.status === 'rejected' ? 'opacity-20' : tx.status === 'approved' ? 'opacity-100' : 'opacity-40'}`} style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : tx.status === 'approved' ? '#10b981' : wColor }} />
                   
-                  {/* Success Reveal Overlay */}
+                  {/* Success/Approved Overlay */}
+                  {(isSuccess || tx.status === 'approved') && !isSuccess && (
+                     <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-chart-green/10 text-chart-green border border-chart-green/20 animate-in fade-in zoom-in-95">
+                        <Check size={10} strokeWidth={3} />
+                        <span className="text-[9px] font-black uppercase tracking-widest">Consolidado</span>
+                     </div>
+                  )}
+
                   {isSuccess && (
                      <div className="absolute inset-0 bg-chart-green/10 flex items-center justify-center z-10 animate-in fade-in duration-300 backdrop-blur-[2px]">
                         <div className="w-12 h-12 rounded-full bg-chart-green flex items-center justify-center shadow-lg shadow-chart-green/40">
@@ -501,18 +586,22 @@ const TransactionLimbo = () => {
                     {/* Wallet Icon with specific glow */}
                     <div 
                       className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 relative overflow-hidden ${tx.status === 'rejected' ? 'bg-slate-500/10' : ''}`}
-                      style={tx.status !== 'rejected' ? { backgroundColor: `${wColor}15` } : {}}
+                      style={tx.status !== 'rejected' ? { backgroundColor: tx.status === 'approved' ? '#10b98110' : `${wColor}15` } : {}}
                     >
-                       <div className="absolute inset-0 opacity-20 blur-sm" style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : wColor }} />
-                       <Wallet size={20} className="relative z-10" style={{ color: tx.status === 'rejected' ? '#64748b' : wColor }} />
+                       <div className="absolute inset-0 opacity-20 blur-sm" style={{ backgroundColor: tx.status === 'rejected' ? '#64748b' : tx.status === 'approved' ? '#10b981' : wColor }} />
+                       {tx.status === 'approved' ? (
+                         <Check size={20} className="relative z-10 text-chart-green" />
+                       ) : (
+                         <Wallet size={20} className="relative z-10" style={{ color: tx.status === 'rejected' ? '#64748b' : wColor }} />
+                       )}
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-1">
                        <div className="flex items-center justify-between gap-2">
-                          <p className={`text-sm font-bold truncate leading-none ${tx.status === 'rejected' ? 'text-slate-500 line-through' : 'text-white/90'}`}>
+                          <p className={`text-sm font-bold truncate leading-none ${tx.status === 'rejected' ? 'text-white/40 line-through' : 'text-white/90'}`}>
                             {tx.description}
                           </p>
-                          <span className={`text-base font-black tabular-nums shrink-0 ${tx.status === 'rejected' ? 'text-slate-500 line-through' : tx.type === 'income' ? 'text-chart-green' : 'text-white'}`}>
+                          <span className={`text-base font-black tabular-nums shrink-0 ${tx.status === 'rejected' ? 'text-white/40 line-through' : tx.type === 'income' ? 'text-chart-green' : 'text-white'}`}>
                             {tx.type === 'income' ? '+\u00a0' : '-\u00a0'}
                             {Number(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
@@ -526,25 +615,30 @@ const TransactionLimbo = () => {
                           <span className="text-[11px] font-medium text-muted-foreground truncate uppercase tracking-tight">
                             {walletName(tx.wallet_id)}
                           </span>
-                          {tx.status === 'rejected' && (
-                            <span className="text-[9px] font-bold text-slate-600 bg-black/40 px-1.5 py-0.5 rounded-md border border-white/5">
-                              IGNORADO
-                            </span>
+
+                          <div className="flex-1" />
+
+                          {tx.payment_method_id && (
+                            <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                              <Zap size={10} />
+                              <span className="text-[9px] font-bold uppercase">Auto-PIX</span>
+                            </div>
                           )}
                           
                           {suggestedCat && (
-                            <>
-                              <span className="text-white/10 text-[10px]">•</span>
-                              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                                {suggestedCat.icon_emoji ? (
-                                  <span className="text-[10px]">{suggestedCat.icon_emoji}</span>
-                                ) : (
-                                  <Sparkles size={10} />
-                                )}
-                                <span className="text-[10px] font-bold uppercase tracking-tighter">{suggestedCat.name}</span>
-                              </div>
-                            </>
-                          )}
+                             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl transition-all ${
+                               tx.status === 'approved' 
+                               ? 'bg-chart-green/10 text-chart-green border border-chart-green/20' 
+                               : 'bg-primary/10 text-primary border border-primary/20'
+                             }`}>
+                               {suggestedCat.icon_emoji ? (
+                                 <span className="text-[12px]">{suggestedCat.icon_emoji}</span>
+                               ) : (
+                                 <Sparkles size={11} />
+                               )}
+                               <span className="text-[11px] font-bold uppercase tracking-tight">{suggestedCat.name}</span>
+                             </div>
+                           )}
                        </div>
                     </div>
                   </div>
@@ -555,213 +649,30 @@ const TransactionLimbo = () => {
         )}
       </div>
 
-      {/* ── Liquid Action Drawer ── */}
-      {selected && (
-        <div className="fixed inset-0 z-[100] flex items-end justify-center px-4 pb-4">
-          <div
-            className="absolute inset-0 bg-black/80 backdrop-blur-md animate-in fade-in duration-500"
-            onClick={closeDetail}
-          />
-
-          <div className="relative w-full max-w-lg glass-card-elevated rounded-[2.5rem] p-7 pt-10 space-y-6 animate-in slide-in-from-bottom-full duration-500 ease-out-expo max-h-[90vh] overflow-y-auto">
-            {/* Close Button (Premium) */}
-            <button
-              onClick={closeDetail}
-              className="absolute top-4 right-4 w-10 h-10 rounded-2xl glass-inner flex items-center justify-center text-muted-foreground hover:bg-white/10 hover:text-white transition-all active:rotate-90"
-            >
-              <X size={20} />
-            </button>
-
-            {/* Handle Bar */}
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-white/10 rounded-full" />
-
-            {/* Header Content */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div
-                  className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest"
-                  style={{
-                    backgroundColor: `${walletColor(selected.wallet_id)}20`,
-                    color: walletColor(selected.wallet_id),
-                    border: `1px solid ${walletColor(selected.wallet_id)}30`,
-                  }}
-                >
-                  {walletName(selected.wallet_id)}
-                </div>
-                <span className="text-xs font-semibold text-muted-foreground">
-                  {format(new Date(selected.date), "dd/MM/yyyy 'às' HH:mm")}
-                </span>
-              </div>
-              <h2 className={`text-4xl font-black tabular-nums tracking-tighter ${selected.type === "income" ? "text-chart-green" : "text-white"}`}>
-                {selected.type === "income" ? "+" : "-"} R${" "}
-                {Number(selected.amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-              </h2>
-            </div>
-
-            {/* Original Source (Faded code block style) */}
-            <div className="space-y-2">
-               <label className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] px-1">Origem Pluggy</label>
-               <div className="glass-inner bg-black/20 p-4 rounded-2xl border-white/5 font-mono text-[11px] text-white/50 leading-relaxed italic break-all">
-                  {selected.description}
-               </div>
-            </div>
-
-            {/* Input Fields Group */}
-            <div className="space-y-5">
-               {/* Description */}
-               <div className="space-y-2">
-                  <label className="text-xs font-bold text-white/70 px-1">Como você descreve?</label>
-                  <div className="relative group">
-                    <input
-                      type="text"
-                      value={editedDescription}
-                      onChange={(e) => setEditedDescription(e.target.value)}
-                      placeholder="Ex: Assinatura Netflix"
-                      className="w-full glass-inner bg-white/[0.03] rounded-2xl px-5 py-4 text-base font-medium text-white placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:bg-white/[0.06] transition-all"
-                    />
-                  </div>
-               </div>
-
-               {/* Dual Select Layout */}
-               <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-white/70 px-1 flex items-center gap-1.5">
-                      <Tag size={12} /> Categoria
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={selectedCategoryId}
-                        onChange={(e) => setSelectedCategoryId(e.target.value)}
-                        className="w-full appearance-none glass-inner bg-white/[0.03] rounded-2xl px-5 py-4 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all cursor-pointer"
-                      >
-                        <option value="" className="bg-slate-900">Tipo...</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id} className="bg-slate-900">
-                            {c.icon_emoji ? `${c.icon_emoji} ${c.name}` : c.name}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-white/70 px-1 flex items-center gap-1.5">
-                      <Wallet size={12} /> Carteira
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={selectedWalletId}
-                        onChange={(e) => setSelectedWalletId(e.target.value)}
-                        className="w-full appearance-none glass-inner bg-white/[0.03] rounded-2xl px-5 py-4 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all cursor-pointer"
-                      >
-                        <option value="" className="bg-slate-900">Escolha...</option>
-                        {wallets.map((w) => (
-                          <option key={w.id} value={w.id} className="bg-slate-900">{w.name}</option>
-                        ))}
-                      </select>
-                      <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-                    </div>
-                  </div>
-               </div>
-            </div>
-
-            {/* Action Buttons (Floating style) */}
-            <div className="flex gap-3 pt-4">
-               <button
-                  onClick={handleReject}
-                  disabled={rejectTransaction.isPending}
-                  className={`flex-1 py-4 rounded-2xl glass-inner border-white/10 text-sm font-bold active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${
-                    selected.status === 'rejected' ? 'text-primary hover:bg-primary/10' : 'text-white/70 hover:bg-white/5'
-                  }`}
-               >
-                  {selected.status === 'rejected' ? (
-                    <>
-                      <RefreshCw size={18} className="animate-in spin-in-180 duration-500" />
-                      Restaurar
-                    </>
-                  ) : (
-                    <>
-                      <XCircle size={18} />
-                      Ignorar
-                    </>
-                  )}
-               </button>
-
-               <button
-                 onClick={async () => {
-                   if (window.confirm("Deseja deletar permanentemente esta transação da lista?")) {
-                     await deletePermanently.mutateAsync(selected.id);
-                     toast.success("Deletado com sucesso.");
-                     closeDetail();
-                   }
-                 }}
-                 disabled={deletePermanently.isPending}
-                 className="w-14 rounded-2xl glass-inner border-white/5 flex items-center justify-center text-destructive/40 hover:text-destructive hover:bg-destructive/10 active:scale-90 transition-all disabled:opacity-50"
-                 title="Deletar Permanente"
-               >
-                 {deletePermanently.isPending ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={18} />}
-               </button>
-
-               <button
-                  onClick={handleApprove}
-                  disabled={approveTransaction.isPending}
-                  className="flex-[2] py-4 rounded-2xl bg-primary text-white font-bold text-sm shadow-xl shadow-primary/30 active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-               >
-                 {approveTransaction.isPending ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />}
-                 Consolidar
-               </button>
-            </div>
-
-            {/* Smart Rule Automation Section */}
-            <div className="bg-white/[0.03] border border-white/5 rounded-3xl p-5 space-y-4">
-               {!showRuleForm ? (
-                  <button
-                    onClick={() => {
-                      setShowRuleForm(true);
-                      const words = selected.description.split(" ").slice(0, 3).join(" ");
-                      setRuleKeyword(words.toLowerCase());
-                      setRuleCategoryId(selectedCategoryId);
-                    }}
-                    className="w-full flex items-center justify-center gap-2 text-xs font-bold text-primary group-hover:text-primary-foreground transition-all"
-                  >
-                    <Sparkles size={14} className="animate-pulse" />
-                    Automatizar transações futuras deste tipo
-                  </button>
-               ) : (
-                  <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40">Configurar Automação</h4>
-                      <button onClick={() => setShowRuleForm(false)} className="text-white/30 hover:text-white"><X size={14}/></button>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-bold text-muted-foreground ml-1">Regra de detecção</span>
-                        <input
-                          type="text"
-                          value={ruleKeyword}
-                          onChange={(e) => setRuleKeyword(e.target.value)}
-                          className="w-full glass-inner bg-black/20 rounded-xl px-4 py-3 text-xs font-mono text-primary placeholder:text-primary/20 focus:outline-none border-primary/20"
-                          placeholder="Termo de busca..."
-                        />
-                      </div>
-                      
-                      <button
-                        onClick={handleCreateRule}
-                        disabled={addRule.isPending}
-                        className="w-full py-3 rounded-2xl bg-primary/10 text-primary border border-primary/20 text-xs font-black uppercase tracking-widest hover:bg-primary/20 transition-all flex items-center justify-center gap-2"
-                      >
-                        {addRule.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                        Ativar Regra Inteligente
-                      </button>
-                    </div>
-                  </div>
-               )}
-            </div>
-          </div>
-        </div>
-      )}
+      <AddTransactionDrawer 
+        open={addDrawerOpen} 
+        onOpenChange={setAddDrawerOpen} 
+        initialData={drawerData}
+        onIgnore={(id) => {
+          rejectTransaction.mutate(id);
+          closeDetail();
+        }}
+        onDelete={(id) => {
+          if (window.confirm("Deseja deletar permanentemente esta transação da lista?")) {
+            deletePermanently.mutate(id);
+            closeDetail();
+          }
+        }}
+        onCreateRule={(desc, catId) => {
+          closeDetail();
+          setShowRulesPanel(true);
+          setShowRuleForm(true);
+          setRuleKeyword(desc);
+          setRuleCategoryId(catId);
+          // Scroll to top or ensure form is visible
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      />
 
       <BottomNav />
     </div>

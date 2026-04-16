@@ -6,6 +6,10 @@ import { useCategories } from "@/hooks/useCategories";
 import { usePaymentMethods } from "@/hooks/usePaymentMethods";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { toast } from "sonner";
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAutomationRules } from "@/hooks/useAutomationRules";
+import { Sparkles, Trash2, XCircle } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type TxType = Database["public"]["Enums"]["transaction_type"];
@@ -13,14 +17,36 @@ type TxType = Database["public"]["Enums"]["transaction_type"];
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialData?: {
+    amount: string;
+    description: string;
+    date: string;
+    type: TxType;
+    walletId?: string;
+    categoryId?: string;
+    paymentMethodId?: string;
+    stagedId?: string;
+  };
+  onIgnore?: (stagedId: string) => void;
+  onDelete?: (stagedId: string) => void;
+  onCreateRule?: (description: string, categoryId: string) => void;
 }
 
-const AddTransactionDrawer = ({ open, onOpenChange }: Props) => {
+const AddTransactionDrawer = ({ 
+  open, 
+  onOpenChange, 
+  initialData,
+  onIgnore,
+  onDelete,
+  onCreateRule
+}: Props) => {
   const { addTransaction } = useTransactions();
   const { wallets } = useWallets();
   const { categories } = useCategories();
   const { paymentMethods } = usePaymentMethods();
+  const { addRule } = useAutomationRules();
   const { t } = useLanguage();
+  const queryClient = useQueryClient();
 
   const creditCards = wallets.filter(w => w.type === "credit_card");
   const regularWallets = wallets.filter(w => w.type !== "credit_card");
@@ -40,6 +66,34 @@ const AddTransactionDrawer = ({ open, onOpenChange }: Props) => {
   };
 
   const [date, setDate] = useState<string>(getLocalDateString());
+
+  // Populate from initialData
+  useState(() => {
+    if (initialData) {
+      setType(initialData.type || "expense");
+      setAmount(initialData.amount || "");
+      setDescription(initialData.description || "");
+      setCategoryId(initialData.categoryId || "");
+      setSelectedPaymentMethod(initialData.paymentMethodId || "");
+      if (initialData.date) {
+        setDate(initialData.date.split("T")[0]);
+      }
+    }
+  });
+
+  // Also update when initialData specifically changes if the drawer is already open
+  useEffect(() => {
+    if (initialData && open) {
+      setType(initialData.type || "expense");
+      setAmount(initialData.amount || "");
+      setDescription(initialData.description || "");
+      setCategoryId(initialData.categoryId || "");
+      setSelectedPaymentMethod(initialData.paymentMethodId || "");
+      if (initialData.date) {
+        setDate(initialData.date.split("T")[0]);
+      }
+    }
+  }, [initialData, open]);
 
   // A selected payment method is a credit card if its ID belongs to a wallet object
   const isCreditCard = creditCards.some(c => c.id === selectedPaymentMethod);
@@ -75,12 +129,24 @@ const AddTransactionDrawer = ({ open, onOpenChange }: Props) => {
         status: "paid",
         date: safeDate.toISOString(),
       });
+
+      // Cleanup staged transaction if applicable
+      if (initialData?.stagedId) {
+        const { supabase } = await import("@/integrations/supabase/client");
+        await supabase.from("staged_transactions").delete().eq("id", initialData.stagedId);
+        queryClient.invalidateQueries({ queryKey: ["staged_transactions"] });
+      }
+
       toast.success(t("tx.added"));
       onOpenChange(false);
-      setAmount("");
-      setDescription("");
-      setSelectedPaymentMethod("");
-      setCategoryId("");
+      
+      // Reset after success
+      if (!initialData) {
+        setAmount("");
+        setDescription("");
+        setSelectedPaymentMethod("");
+        setCategoryId("");
+      }
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -199,10 +265,39 @@ const AddTransactionDrawer = ({ open, onOpenChange }: Props) => {
               </div>
             )}
 
+            {/* Discrete Contextual Actions for Staged Transactions */}
+            {initialData?.stagedId && (
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={() => onIgnore?.(initialData.stagedId!)}
+                  className="flex-1 py-3 rounded-xl border border-white/5 bg-white/[0.03] text-xs font-bold text-white/40 hover:text-white/70 hover:bg-white/[0.05] transition-all flex items-center justify-center gap-2"
+                >
+                  <XCircle size={14} />
+                  Ignorar
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => onCreateRule?.(description, categoryId)}
+                    className="w-11 h-11 rounded-xl glass-inner border border-primary/20 flex items-center justify-center text-primary/60 hover:text-primary hover:bg-primary/10 transition-all active:scale-90"
+                    title={t("rules.create")}
+                  >
+                    <Sparkles size={18} />
+                  </button>
+                  <button
+                    onClick={() => onDelete?.(initialData.stagedId!)}
+                    className="w-11 h-11 rounded-xl glass-inner border border-destructive/10 flex items-center justify-center text-destructive/40 hover:text-destructive hover:bg-destructive/10 transition-all active:scale-90"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <button
               onClick={handleSubmit}
               disabled={addTransaction.isPending}
-              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm glow-blue transition-all active:scale-[0.98] disabled:opacity-50"
+              className="w-full py-4 rounded-xl bg-primary text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20 transition-all active:scale-[0.98] disabled:opacity-50"
             >
               {addTransaction.isPending ? t("tx.adding") : t("tx.addTransaction")}
             </button>

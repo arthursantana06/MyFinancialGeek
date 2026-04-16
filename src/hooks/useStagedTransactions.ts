@@ -14,7 +14,7 @@ export const useStagedTransactions = () => {
         .from("staged_transactions")
         .select("*, wallets(*), categories:suggested_category_id(*)")
         .eq("user_id", user!.id)
-        .in("status", ["pending", "rejected"]) // NEW: include rejected
+        .in("status", ["pending", "rejected", "approved"])
         .order("date", { ascending: false });
       if (error) throw error;
       return data;
@@ -55,10 +55,14 @@ export const useStagedTransactions = () => {
         });
       if (insertError) throw insertError;
 
-      // 2. Mark staged transaction as approved
       const { error: updateError } = await supabase
         .from("staged_transactions")
-        .update({ status: "approved", updated_at: new Date().toISOString() })
+        .update({ 
+          status: "approved", 
+          suggested_category_id: category_id,
+          wallet_id,
+          updated_at: new Date().toISOString() 
+        })
         .eq("id", stagedId)
         .eq("user_id", user!.id);
       if (updateError) throw updateError;

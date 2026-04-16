@@ -12,7 +12,7 @@ export const useDebtors = () => {
         queryFn: async () => {
             const { data, error } = await supabase
                 .from("debtors")
-                .select("*, debts(*)")
+                .select("*, debts(*, debt_mutations(*))")
                 .eq("user_id", user!.id)
                 .order("created_at", { ascending: false });
 
@@ -43,7 +43,18 @@ export const useDebtors = () => {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ["debtors"] }),
     });
 
-    const debtors = query.data ?? [];
+    const debtors = (query.data ?? []).map(debtor => {
+        const debts = (debtor.debts || []).map((d: any) => {
+            const mutations = d.debt_mutations || [];
+            const totalPaid = mutations.reduce((acc: number, m: any) => acc + Number(m.amount), 0);
+            return {
+                ...d,
+                currentAmount: Math.max(0, Number(d.amount) - totalPaid),
+                mutations
+            };
+        });
+        return { ...debtor, debts };
+    });
 
     return {
         debtors,

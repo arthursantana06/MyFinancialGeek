@@ -7,6 +7,8 @@ export interface AutomationRule {
   user_id: string;
   keyword: string;
   category_id: string;
+  rule_type: "auto_approve" | "suggest";
+  payment_method_id: string | null;
   created_at: string | null;
   categories?: {
     id: string;
@@ -36,10 +38,26 @@ export const useAutomationRules = () => {
   });
 
   const addRule = useMutation({
-    mutationFn: async ({ keyword, category_id }: { keyword: string; category_id: string }) => {
+    mutationFn: async ({ 
+      keyword, 
+      category_id, 
+      rule_type = "suggest", 
+      payment_method_id 
+    }: { 
+      keyword: string; 
+      category_id: string;
+      rule_type?: "auto_approve" | "suggest";
+      payment_method_id?: string;
+    }) => {
       const { data, error } = await supabase
         .from("automation_rules")
-        .insert({ keyword: keyword.toLowerCase().trim(), category_id, user_id: user!.id })
+        .insert({ 
+          keyword: keyword.toLowerCase().trim(), 
+          category_id, 
+          rule_type,
+          payment_method_id,
+          user_id: user!.id 
+        })
         .select("*, categories(*)")
         .single();
       if (error) throw error;
@@ -67,12 +85,13 @@ export const useAutomationRules = () => {
 
   /**
    * Given a transaction description, find the first matching automation rule
-   * and return the suggested category_id.
+   * and return any suggested metadata.
    */
   const findSuggestedCategory = (description: string): string | null => {
     const rules = query.data ?? [];
-    const lower = description.toLowerCase();
-    const match = rules.find((r) => lower.includes(r.keyword.toLowerCase()));
+    const lower = description.toLowerCase().trim();
+    // Use exact match as requested by user
+    const match = rules.find((r) => lower === r.keyword.toLowerCase().trim());
     return match?.category_id ?? null;
   };
 

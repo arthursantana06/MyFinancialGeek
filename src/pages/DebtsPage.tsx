@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useDebtors } from "@/hooks/useDebtors";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { Users, ArrowUpRight, ArrowDownLeft, Plus, ChevronDown, ChevronRight } from "lucide-react";
@@ -14,16 +14,16 @@ const DebtsPage = () => {
   const [selectedDebtor, setSelectedDebtor] = useState<any | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
-  // Global aggregate
-  let totalOwedGlobal = 0;
-  let totalOwingGlobal = 0;
-
-  debtors.forEach(debtor => {
-    const debts = debtor.debts || [];
-    totalOwedGlobal += debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.amount), 0);
-    totalOwingGlobal += debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.amount), 0);
-  });
-  const netPositionGlobal = totalOwedGlobal - totalOwingGlobal;
+  const { totalOwedGlobal, totalOwingGlobal, netPositionGlobal } = useMemo(() => {
+    let owed = 0;
+    let owing = 0;
+    debtors.forEach(debtor => {
+      const debts = debtor.debts || [];
+      owed += debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
+      owing += debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
+    });
+    return { totalOwedGlobal: owed, totalOwingGlobal: owing, netPositionGlobal: owed - owing };
+  }, [debtors]);
 
   return (
     <div className="min-h-screen bg-background p-4 pb-28">
@@ -71,20 +71,21 @@ const DebtsPage = () => {
               <h3 className="text-sm font-semibold text-foreground mt-4 mb-2">
                 Pessoas ({debtors.filter(debtor => {
                   const debts = debtor.debts || [];
-                  const totalOwed = debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.amount), 0);
-                  const totalOwing = debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.amount), 0);
-                  return (totalOwed - totalOwing) !== 0;
+                  const totalOwed = debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
+                  const totalOwing = debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
+                  const net = totalOwed - totalOwing;
+                  return net !== 0 && debts.length > 0;
                 }).length})
               </h3>
               <div className="space-y-2">
                 {debtors
                   .map(debtor => {
                     const debts = debtor.debts || [];
-                    const totalOwed = debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.amount), 0);
-                    const totalOwing = debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.amount), 0);
+                    const totalOwed = debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
+                    const totalOwing = debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
                     return { ...debtor, netPosition: totalOwed - totalOwing, debtsCount: debts.length };
                   })
-                  .filter(d => d.netPosition !== 0)
+                  .filter(d => d.netPosition !== 0 && d.debtsCount > 0)
                   .map(debtor => (
                     <div
                       key={debtor.id}
@@ -112,9 +113,10 @@ const DebtsPage = () => {
             {/* Archived Debtors */}
             {debtors.some(debtor => {
               const debts = debtor.debts || [];
-              const totalOwed = debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.amount), 0);
-              const totalOwing = debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.amount), 0);
-              return (totalOwed - totalOwing) === 0;
+              const totalOwed = debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
+              const totalOwing = debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
+              const net = totalOwed - totalOwing;
+              return net === 0 || debts.length === 0;
             }) && (
               <div className="pt-2 border-t border-glass-border">
                 <button 
@@ -130,11 +132,11 @@ const DebtsPage = () => {
                     {debtors
                     .map(debtor => {
                       const debts = debtor.debts || [];
-                      const totalOwed = debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.amount), 0);
-                      const totalOwing = debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.amount), 0);
+                      const totalOwed = debts.filter((d: any) => d.type === "receivable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
+                      const totalOwing = debts.filter((d: any) => d.type === "payable").reduce((s: any, d: any) => s + Number(d.currentAmount), 0);
                       return { ...debtor, netPosition: totalOwed - totalOwing, debtsCount: debts.length };
                     })
-                    .filter(d => d.netPosition === 0)
+                    .filter(d => d.netPosition === 0 || d.debtsCount === 0)
                     .map(debtor => (
                       <div
                         key={debtor.id}

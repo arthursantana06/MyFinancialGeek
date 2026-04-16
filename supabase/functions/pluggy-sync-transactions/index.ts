@@ -104,11 +104,18 @@ Deno.serve(async (req) => {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const to = tomorrow.toISOString().split('T')[0];
 
+    // Fetch automation rules for this user
+    const { data: rules } = await supabase
+      .from('automation_rules')
+      .select('*')
+      .eq('user_id', userId);
+
     const apiKey = await getPluggyApiKey();
     const accounts = await fetchAccounts(apiKey, itemId);
 
     let totalInserted = 0;
     let totalSkipped = 0;
+    let totalAutoApproved = 0;
 
     for (const account of accounts) {
       const accountId = account.id;
@@ -125,26 +132,87 @@ Deno.serve(async (req) => {
 
       for (const tx of transactions) {
         const pluggyTxId = tx.id;
+        const description = tx.description || tx.descriptionRaw || 'Sem descrição';
+        const amount = Math.abs(tx.amount);
+        const type = tx.amount >= 0 ? 'income' : 'expense';
         
-        // Skip if exists (unless force mode deleted it already)
-        const { data: existing } = await supabase
+        // Skip if exists in staged OR real transactions
+        const { data: existingStaged } = await supabase
           .from('staged_transactions')
-          .select('id')
+          .select('id, status, wallet_id')
           .eq('pluggy_transaction_id', pluggyTxId)
           .maybeSingle();
-        
-        if (existing) { totalSkipped++; continue; }
 
+        // Also check if already consolidated in real transactions to avoid duplicates
+        // Note: We might want a dedicated column for pluggy_id in transactions for better consistency
+        // but for now we skip if it exists in staged.
+        
+        if (existingStaged) {
+          // If it exists but not confirmed, update the mapping if it changed
+          if (existingStaged.status !== 'confirmed' && existingStaged.wallet_id !== walletId) {
+            await supabase
+              .from('staged_transactions')
+              .update({ wallet_id: walletId })
+              .eq('id', existingStaged.id);
+          }
+          totalSkipped++; 
+          continue; 
+        }
+
+        // Apply Automation Rules (Exact Match)
+        const matchingRule = rules?.find(r => r.keyword?.toLowerCase() === description.toLowerCase());
+        
+        if (matchingRule?.rule_type === 'auto_approve' && matchingRule.category_id && walletId) {
+          console.log(`[SYNC] AUTO-APPROVING: ${description}`);
+          const { error: insertErr } = await supabase.from('transactions').insert({
+            user_id: userId,
+            description,
+            amount,
+            type,
+            date: tx.date,
+            category_id: matchingRule.category_id,
+            wallet_id: walletId,
+            status: 'paid',
+            // If they also mapped a payment method in the auto-approve rule
+            payment_method_id: matchingRule.payment_method_id || null
+          });
+          
+          if (insertErr) {
+             console.error(`[SYNC] Auto-approve error: ${insertErr.message}`);
+             // Fallback to staged if auto-approve fails
+          } else {
+             // Create a "confirmed" record in staged to keep track that we synced this ID
+             await supabase.from('staged_transactions').insert({
+               user_id: userId,
+               pluggy_transaction_id: pluggyTxId,
+               pluggy_account_id: accountId,
+               description,
+               amount,
+               type,
+               date: tx.date,
+               wallet_id: walletId,
+               status: 'confirmed',
+               suggested_category_id: matchingRule.category_id
+             });
+             
+             totalAutoApproved++;
+             continue;
+          }
+        }
+
+        // Normal Staging or Suggestion mapping
         const { error } = await supabase.from('staged_transactions').insert({
           user_id: userId,
           pluggy_transaction_id: pluggyTxId,
           pluggy_account_id: accountId,
-          description: tx.description || tx.descriptionRaw || 'Sem descrição',
-          amount: Math.abs(tx.amount),
-          type: tx.amount >= 0 ? 'income' : 'expense',
+          description,
+          amount,
+          type,
           date: tx.date,
           wallet_id: walletId,
           status: 'pending',
+          suggested_category_id: matchingRule?.category_id || null,
+          payment_method_id: matchingRule?.payment_method_id || null
         });
         
         if (error) console.error(`[SYNC] Insert error: ${error.message}`);
@@ -153,7 +221,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, inserted: totalInserted, skipped: totalSkipped }),
+      JSON.stringify({ success: true, inserted: totalInserted, skipped: totalSkipped, autoApproved: totalAutoApproved }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

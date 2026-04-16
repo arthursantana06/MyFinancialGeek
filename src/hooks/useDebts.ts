@@ -12,7 +12,7 @@ export const useDebts = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("debts")
-        .select("*, debtors(*)")
+        .select("*, debtors(*), debt_mutations(*)")
         .eq("user_id", user!.id)
         .order("date", { ascending: false });
       if (error) throw error;
@@ -39,6 +39,8 @@ export const useDebts = () => {
 
   const deleteDebt = useMutation({
     mutationFn: async (id: string) => {
+      // First clean up mutations explicitly to ensure no constraint errors regardless of DB config
+      await supabase.from("debt_mutations").delete().eq("debt_id", id);
       const { error } = await supabase.from("debts").delete().eq("id", id);
       if (error) throw error;
     },
@@ -48,54 +50,59 @@ export const useDebts = () => {
     },
   });
 
-  const settleDebt = useMutation({
-    mutationFn: async ({ debtId, walletId, paymentMethodId }: { debtId: string; walletId: string | null; paymentMethodId: string | null }) => {
-      const debt = (query.data ?? []).find((d) => d.id === debtId);
-      if (!debt) throw new Error("Debt not found");
-
-      const debtorName = (debt.debtors as any)?.name || "Unknown";
-
-      // Create settlement transaction
-      const { error: txError } = await supabase.from("transactions").insert({
-        user_id: user!.id,
-        amount: Number(debt.amount),
-        type: debt.type === "payable" ? "expense" : "income",
-        description: `Liquidação: ${debt.description} - ${debtorName}`,
-        wallet_id: walletId,
-        payment_method_id: paymentMethodId,
-        status: "paid",
-        debt_id: debtId,
-        date: new Date().toISOString()
-      });
-      if (txError) throw txError;
-
-      // In this new reality we don't necessarily zero out the debt, 
-      // but if the user wants to "settle" they are adding a negative/positive debt or we create a matching transaction.
-      // Easiest is to add a counter-debt so the history remains.
-      const counterType = debt.type === "payable" ? "receivable" : "payable";
-
-      const { error: debtError } = await supabase
-        .from("debts")
+  const addMutation = useMutation({
+    mutationFn: async ({ debtId, amount, description }: { debtId: string; amount: number; description: string }) => {
+      const { data, error } = await supabase
+        .from("debt_mutations")
         .insert({
+          debt_id: debtId,
+          amount,
+          description,
           user_id: user!.id,
-          debtor_id: debt.debtor_id,
-          amount: debt.amount,
-          type: counterType,
-          description: `Liquidação (Ref: ${debt.description})`,
           date: new Date().toISOString()
-        });
-      if (debtError) throw debtError;
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["debts"] });
       queryClient.invalidateQueries({ queryKey: ["debtors"] });
-      queryClient.invalidateQueries({ queryKey: ["transactions"] });
     },
   });
 
-  const debts = query.data ?? [];
-  const totalOwed = debts.filter((d) => d.type === "receivable").reduce((s, d) => s + Number(d.amount), 0);
-  const totalOwing = debts.filter((d) => d.type === "payable").reduce((s, d) => s + Number(d.amount), 0);
+  const settleDebt = useMutation({
+    mutationFn: async ({ 
+      debtId, 
+      amount, 
+      description 
+    }: { 
+      debtId: string; 
+      amount: number; 
+      description: string;
+    }) => {
+      // For now we just add a mutation as requested (no transaction link)
+      return addMutation.mutateAsync({ debtId, amount, description });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["debts"] });
+      queryClient.invalidateQueries({ queryKey: ["debtors"] });
+    },
+  });
+
+  const debts = (query.data ?? []).map(d => {
+    const mutations = (d as any).debt_mutations || [];
+    const totalPaid = mutations.reduce((acc: number, m: any) => acc + Number(m.amount), 0);
+    return {
+      ...d,
+      currentAmount: Math.max(0, Number(d.amount) - totalPaid),
+      mutations
+    };
+  });
+
+  const totalOwed = debts.filter((d) => d.type === "receivable").reduce((s, d) => s + Number(d.currentAmount), 0);
+  const totalOwing = debts.filter((d) => d.type === "payable").reduce((s, d) => s + Number(d.currentAmount), 0);
   const netPosition = totalOwed - totalOwing;
 
   return {
